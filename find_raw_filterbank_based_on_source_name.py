@@ -10,8 +10,8 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Postgres username, password, and database name
-POSTGRES_ADDRESS = '10.98.76.52' ## INSERT YOUR DB ADDRESS IF IT'S NOT ON PANOPLY
-POSTGRES_PORT = '3306'
+POSTGRES_ADDRESS = os.getenv("DB_HOST") ## INSERT YOUR DB ADDRESS IF IT'S NOT ON PANOPLY
+POSTGRES_PORT = os.getenv("DB_PORT")
 POSTGRES_USERNAME = os.getenv("DB_USERNAME")
 POSTGRES_PASSWORD = os.getenv("DB_PASSWORD") ## CHANGE THIS TO YOUR PANOPLY/POSTGRES PASSWORD
 POSTGRES_DBNAME = 'trapum_web' ## 
