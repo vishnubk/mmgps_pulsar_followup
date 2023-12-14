@@ -1,0 +1,95 @@
+Dec-14 18:26:57.694 [main] DEBUG nextflow.cli.Launcher - $> nextflow run main.nf -resume
+Dec-14 18:26:57.846 [main] INFO  nextflow.cli.CmdRun - N E X T F L O W  ~  version 23.10.0
+Dec-14 18:26:57.872 [main] DEBUG nextflow.plugin.PluginsFacade - Setting up plugin manager > mode=prod; embedded=false; plugins-dir=/homes/vishnu/.nextflow/plugins; core-plugins: nf-amazon@2.1.4,nf-azure@1.3.2,nf-cloudcache@0.3.0,nf-codecommit@0.1.5,nf-console@1.0.6,nf-ga4gh@1.1.0,nf-google@1.8.3,nf-tower@1.6.3,nf-wave@1.0.0
+Dec-14 18:26:57.885 [main] INFO  o.pf4j.DefaultPluginStatusProvider - Enabled plugins: []
+Dec-14 18:26:57.886 [main] INFO  o.pf4j.DefaultPluginStatusProvider - Disabled plugins: []
+Dec-14 18:26:57.889 [main] INFO  org.pf4j.DefaultPluginManager - PF4J version 3.4.1 in 'deployment' mode
+Dec-14 18:26:57.902 [main] INFO  org.pf4j.AbstractPluginManager - No plugins
+Dec-14 18:26:57.924 [main] DEBUG nextflow.config.ConfigBuilder - Found config local: /homes/vishnu/mmgps_pulsar_followup/nextflow.config
+Dec-14 18:26:57.926 [main] DEBUG nextflow.config.ConfigBuilder - Parsing config file: /homes/vishnu/mmgps_pulsar_followup/nextflow.config
+Dec-14 18:26:57.950 [main] DEBUG nextflow.config.ConfigBuilder - Applying config profile: `standard`
+Dec-14 18:26:58.585 [main] DEBUG nextflow.cli.CmdRun - Applied DSL=2 from script declararion
+Dec-14 18:26:58.609 [main] INFO  nextflow.cli.CmdRun - Launching `main.nf` [evil_jang] DSL2 - revision: cd16925b8a
+Dec-14 18:26:58.609 [main] DEBUG nextflow.plugin.PluginsFacade - Plugins default=[]
+Dec-14 18:26:58.609 [main] DEBUG nextflow.plugin.PluginsFacade - Plugins resolved requirement=[]
+Dec-14 18:26:58.621 [main] DEBUG n.secret.LocalSecretsProvider - Secrets store: /homes/vishnu/.nextflow/secrets/store.json
+Dec-14 18:26:58.625 [main] DEBUG nextflow.secret.SecretsLoader - Discovered secrets providers: [nextflow.secret.LocalSecretsProvider@181b8c4b] - activable => nextflow.secret.LocalSecretsProvider@181b8c4b
+Dec-14 18:26:58.696 [main] DEBUG nextflow.Session - Session UUID: 6ea4aded-299d-43ba-bd4c-7ac7e6c5b5de
+Dec-14 18:26:58.697 [main] DEBUG nextflow.Session - Run name: evil_jang
+Dec-14 18:26:58.698 [main] DEBUG nextflow.Session - Executor pool size: 24
+Dec-14 18:26:58.706 [main] DEBUG nextflow.file.FilePorter - File porter settings maxRetries=3; maxTransfers=50; pollTimeout=null
+Dec-14 18:26:58.711 [main] DEBUG nextflow.util.ThreadPoolBuilder - Creating thread pool 'FileTransfer' minSize=10; maxSize=72; workQueue=LinkedBlockingQueue[10000]; allowCoreThreadTimeout=false
+Dec-14 18:26:58.764 [main] DEBUG nextflow.cli.CmdRun - 
+  Version: 23.10.0 build 5889
+  Created: 15-10-2023 15:07 UTC (17:07 SAST)
+  System: Linux 4.9.0-7-amd64
+  Runtime: Groovy 3.0.19 on OpenJDK 64-Bit Server VM 17.0.6+10
+  Encoding: UTF-8 (ANSI_X3.4-1968)
+  Process: 20413@apspn02 [10.98.76.152]
+  CPUs: 24 - Mem: 93 GB (83.8 GB) - Swap: 32 GB (32 GB)
+Dec-14 18:26:58.804 [main] DEBUG nextflow.Session - Work-dir: /homes/vishnu/mmgps_pulsar_followup/work [nfs]
+Dec-14 18:26:58.805 [main] DEBUG nextflow.Session - Script base path does not exist or is not a directory: /homes/vishnu/mmgps_pulsar_followup/bin
+Dec-14 18:26:58.817 [main] DEBUG nextflow.executor.ExecutorFactory - Extension executors providers=[]
+Dec-14 18:26:58.827 [main] DEBUG nextflow.Session - Observer factory: DefaultObserverFactory
+Dec-14 18:26:58.856 [main] DEBUG nextflow.cache.CacheFactory - Using Nextflow cache factory: nextflow.cache.DefaultCacheFactory
+Dec-14 18:26:58.871 [main] DEBUG nextflow.util.CustomThreadPool - Creating default thread pool > poolSize: 25; maxThreads: 1000
+Dec-14 18:26:59.018 [main] DEBUG nextflow.Session - Session start
+Dec-14 18:26:59.718 [main] DEBUG nextflow.script.ScriptRunner - > Launching execution
+Dec-14 18:26:59.820 [main] DEBUG nextflow.executor.ExecutorFactory - << taskConfig executor: null
+Dec-14 18:26:59.821 [main] DEBUG nextflow.executor.ExecutorFactory - >> processorType: 'local'
+Dec-14 18:26:59.828 [main] DEBUG nextflow.executor.Executor - [warm up] executor > local
+Dec-14 18:26:59.834 [main] DEBUG n.processor.LocalPollingMonitor - Creating local task monitor for executor 'local' > cpus=24; memory=93 GB; capacity=24; pollInterval=100ms; dumpInterval=5m
+Dec-14 18:26:59.837 [main] DEBUG n.processor.TaskPollingMonitor - >>> barrier register (monitor: local)
+Dec-14 18:26:59.987 [main] DEBUG nextflow.executor.ExecutorFactory - << taskConfig executor: null
+Dec-14 18:26:59.987 [main] DEBUG nextflow.executor.ExecutorFactory - >> processorType: 'local'
+Dec-14 18:26:59.992 [main] DEBUG nextflow.Session - Workflow process names [dsl2]: filtool, peasoup, query_db
+Dec-14 18:26:59.993 [main] DEBUG nextflow.Session - Igniting dataflow network (2)
+Dec-14 18:26:59.993 [main] DEBUG nextflow.processor.TaskProcessor - Starting process > query_db
+Dec-14 18:26:59.994 [main] DEBUG nextflow.processor.TaskProcessor - Starting process > filtool
+Dec-14 18:26:59.994 [main] DEBUG nextflow.script.ScriptRunner - Parsed script files:
+  Script_31e13be709508636: /homes/vishnu/mmgps_pulsar_followup/main.nf
+Dec-14 18:26:59.995 [main] DEBUG nextflow.script.ScriptRunner - > Awaiting termination 
+Dec-14 18:26:59.995 [main] DEBUG nextflow.Session - Session await
+Dec-14 18:27:00.209 [Actor Thread 8] INFO  nextflow.processor.TaskProcessor - [56/ab285b] Cached process > query_db
+Dec-14 18:27:00.320 [Task submitter] DEBUG n.executor.local.LocalTaskHandler - Launch cmd line: /bin/bash -ue .command.run
+Dec-14 18:27:00.326 [Task submitter] INFO  nextflow.Session - [ed/c78e68] Submitted process > filtool (1)
+Dec-14 18:31:59.981 [Task monitor] DEBUG n.processor.TaskPollingMonitor - !! executor local > tasks to be completed: 1 -- submitted tasks are shown below
+~> TaskHandler[id: 2; name: filtool (1); status: RUNNING; exit: -; error: -; workDir: /homes/vishnu/mmgps_pulsar_followup/work/ed/c78e68b17fbd5a355bbf614da610ac]
+Dec-14 18:35:04.120 [Task monitor] DEBUG n.processor.TaskPollingMonitor - Task completed > TaskHandler[id: 2; name: filtool (1); status: COMPLETED; exit: 0; error: -; workDir: /homes/vishnu/mmgps_pulsar_followup/work/ed/c78e68b17fbd5a355bbf614da610ac]
+Dec-14 18:35:04.141 [Task monitor] DEBUG nextflow.processor.TaskProcessor - Handling unexpected condition for
+  task: name=filtool (1); work-dir=/homes/vishnu/mmgps_pulsar_followup/work/ed/c78e68b17fbd5a355bbf614da610ac
+  error [nextflow.exception.MissingFileException]: Missing output file(s) `null*.fil` expected by process `filtool (1)`
+Dec-14 18:35:04.194 [Task monitor] ERROR nextflow.processor.TaskProcessor - Error executing process > 'filtool (1)'
+
+Caused by:
+  Missing output file(s) `null*.fil` expected by process `filtool (1)`
+
+Command executed:
+
+  filtool -t 12 --telescope meerkat -z zdot -o J0917-4413_2023-09-21-11:08:29_cfbf00000 -f /beegfs/DATA/TRAPUM/SCI-20200703-MK-02/20230914-0011/20230921_110829/cfbf00000/2023-09-21-11:08:25_cfbf00000_0000000000000000.fil -s J0917-4413
+
+Command exit status:
+  0
+
+Command output:
+  [2023-12-14 18:27:01.254627] [0x00007f792e6997c0] [info]    
+  ========================Preprocess Info========================
+  nsamples                        :52246                          
+  nchans                          :4096                           
+  tsamp                           :0.000038                       
+  td                              :1                              
+  fd                              :1                              
+  IQR threshold                   :4.000000                       
+  ================================================================
+
+Work dir:
+  /homes/vishnu/mmgps_pulsar_followup/work/ed/c78e68b17fbd5a355bbf614da610ac
+
+Tip: you can try to figure out what's wrong by changing to the process work dir and showing the script file named `.command.sh`
+Dec-14 18:35:04.198 [main] DEBUG nextflow.Session - Session await > all processes finished
+Dec-14 18:35:04.201 [Task monitor] DEBUG nextflow.Session - Session aborted -- Cause: Missing output file(s) `null*.fil` expected by process `filtool (1)`
+Dec-14 18:35:04.213 [main] DEBUG nextflow.Session - Session await > all barriers passed
+Dec-14 18:35:04.214 [Task monitor] DEBUG n.processor.TaskPollingMonitor - <<< barrier arrives (monitor: local) - terminating tasks monitor poll loop
+Dec-14 18:35:04.224 [main] DEBUG n.trace.WorkflowStatsObserver - Workflow completed > WorkflowStats[succeededCount=0; failedCount=1; ignoredCount=0; cachedCount=1; pendingCount=0; submittedCount=0; runningCount=0; retriesCount=0; abortedCount=0; succeedDuration=0ms; failedDuration=8m 4s; cachedDuration=12.2s;loadCpus=0; loadMemory=0; peakRunning=1; peakCpus=1; peakMemory=0; ]
+Dec-14 18:35:04.458 [main] DEBUG nextflow.cache.CacheDB - Closing CacheDB done
+Dec-14 18:35:04.492 [main] DEBUG nextflow.script.ScriptRunner - > Execution complete -- Goodbye
