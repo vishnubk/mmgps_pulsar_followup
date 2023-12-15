@@ -22,16 +22,39 @@ process filtool {
     """
 }
 
+process nearest_power_of_two_calculator {
+    label 'nearest_power_two'
+    container "${params.fold_singularity_image}"
+
+    input:
+    path(fil_file)
+
+    output:
+    path "nearest_power_of_two.txt"
+
+    script:
+    """
+    #!/bin/bash
+   
+    output=\$(readfile ${fil_file})
+    echo "\$output"
+
+    value=\$(echo "\$output" | grep "Spectra per file" | awk '{print \$5}')
+
+    log2=\$(echo "l(\$value)/l(2)" | bc -l)
+    decimal_part=\$(echo "\$log2" | awk -F"." '{print "0."\$2}')
+    rounded_log2=\$(echo "\$log2" | awk -F"." '{if (\$2 >= 35) print \$1+1; else print \$1}')
+
+    nearest_power_of_2=\$((2**\$rounded_log2))
+    echo \$nearest_power_of_2 > nearest_power_of_two.txt
+    """
+}
 process peasoup {
     label 'peasoup'
     container "${params.search_singularity_image}"
-    // This will only publish the XML files
-    publishDir "RESULTS/${POINTING}/${UTC_OBS}/${BAND}/${BEAM}/03_SEARCH/", pattern: "**/*.xml", mode: 'copy'
-
-
 
     input:
-    tuple path(fil_file), val(POINTING), val(BAND), val(UTC_OBS), val(BEAM)
+    path(fil_file)
     path(dm_file) 
     val(fft_size)
     val(total_cands_limit)
@@ -42,18 +65,18 @@ process peasoup {
     val(nh)
     val(ngpus)
 
-
     output:
-    tuple path("**/*.xml"), path(fil_file), val(POINTING), val(BAND), val(UTC_OBS), val(BEAM)
-
-
+    path("**/*.xml")
 
     script:
     """
-    peasoup -i ${fil_file} --fft_size ${fft_size} --limit ${total_cands_limit} -m ${min_snr} --acc_start ${acc_start} --acc_end ${acc_end} --dm_file ${dm_file} --ram_limit_gb ${ram_limit_gb} -n ${nh} -t ${ngpus} 
+    #!/bin/bash
+   
+    peasoup -i ${fil_file} --fft_size ${fft_size} --limit ${total_cands_limit} -m ${min_snr} --acc_start ${acc_start} --acc_end ${acc_end} --dm_file ${dm_file} --ram_limit_gb ${ram_limit_gb} -n ${nh} -t ${ngpus}
 
     """
 }
+
 
 process query_db {
     label 'query_db'
@@ -98,6 +121,10 @@ workflow {
 
     // Create channels for each line in the grouped output
     //grouped_query_output.splitText().view()
-    filtool(processed_data_channel, params.rfi_filter, params.threads, params.telescope)
+    filtool_output = filtool(processed_data_channel, params.rfi_filter, params.threads, params.telescope)
+    nearest_two_output = nearest_power_of_two_calculator(filtool_output)
+    fft_size_value = nearest_two_output.map{ file -> file.text.trim() }
+
+    peasoup_output = peasoup(filtool_output, params.dm_file, fft_size_value, params.total_cands_limit, params.min_snr, params.acc_start, params.acc_end, params.ram_limit_gb, params.nh, params.ngpus)
 }
 
