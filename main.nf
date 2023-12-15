@@ -77,6 +77,48 @@ process peasoup {
     """
 }
 
+process create_phase_predictor {
+    label 'create_phase_predictor' // Replace with appropriate label
+    container "${params.fold_singularity_image}"
+    //container "appropriateContainer" // Replace with the appropriate container if needed
+
+    input:
+    path(xml_file)
+    val(period_start)
+    val(period_end)
+    val(target_name)
+
+    output:
+    path "predictor_candidate_*"
+
+    script:
+    """
+    python ${params.phase_predictor} -i ${xml_file} -ps ${period_start} -pe ${period_end} -t ${target_name}
+    """
+}
+
+process fold_apsuse {
+    label 'fold_apsuse' 
+    container "${params.fold_singularity_image}"
+
+    input:
+    path(fil_file)
+    path(phase_predictor)
+    val(threads)
+    val(telescope)
+    val(subint_length)
+    val(bins)
+
+    // output:
+    // path "predictor_candidate_*"
+
+    script:
+    """
+    output_filename=\$(basename ${fil_file} .fil)
+    dspsr -k ${telescope} -t${threads} -P ${phase_predictor} -L ${subint_length} -b${bins} -A -O \${output_filename} ${fil_file}
+    """
+}
+
 
 process query_db {
     label 'query_db'
@@ -126,5 +168,7 @@ workflow {
     fft_size_value = nearest_two_output.map{ file -> file.text.trim() }
 
     peasoup_output = peasoup(filtool_output, params.dm_file, fft_size_value, params.total_cands_limit, params.min_snr, params.acc_start, params.acc_end, params.ram_limit_gb, params.nh, params.ngpus)
+    phase_predictor_output = create_phase_predictor(peasoup_output, params.period_start, params.period_end, params.target_name)
+    apsuse_folds = fold_apsuse(filtool_output, phase_predictor_output, params.dspsr_threads, params.telescope, params.dspsr_subint_length, params.dspsr_apsuse_bins)
 }
 
