@@ -1,3 +1,5 @@
 .env
 work/
 .nextflow*
+SEARCH/
+TIMING/

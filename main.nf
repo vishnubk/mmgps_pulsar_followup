@@ -52,6 +52,7 @@ process nearest_power_of_two_calculator {
 process peasoup {
     label 'peasoup'
     container "${params.search_singularity_image}"
+    publishDir "SEARCH/${target_name}/${utc}/", pattern: "**/*.xml", mode: 'copy'
 
     input:
     path(fil_file)
@@ -64,6 +65,8 @@ process peasoup {
     val(ram_limit_gb)
     val(nh)
     val(ngpus)
+    val(target_name)
+    val(utc)
 
     output:
     path("**/*.xml")
@@ -78,9 +81,8 @@ process peasoup {
 }
 
 process create_phase_predictor {
-    label 'create_phase_predictor' // Replace with appropriate label
+    label 'create_phase_predictor' 
     container "${params.fold_singularity_image}"
-    //container "appropriateContainer" // Replace with the appropriate container if needed
 
     input:
     path(xml_file)
@@ -100,6 +102,7 @@ process create_phase_predictor {
 process fold_apsuse {
     label 'fold_apsuse' 
     container "${params.fold_singularity_image}"
+    publishDir "TIMING/${target_name}/00_APSUSE_FOLDS/", pattern: "*.ar", mode: 'copy'
 
     input:
     path(fil_file)
@@ -108,9 +111,10 @@ process fold_apsuse {
     val(telescope)
     val(subint_length)
     val(bins)
+    val(target_name)
 
-    // output:
-    // path "predictor_candidate_*"
+    output:
+    path "*.ar"
 
     script:
     """
@@ -119,6 +123,129 @@ process fold_apsuse {
     """
 }
 
+process fold_ptuse {
+    label 'fold_ptuse' 
+    container "${params.fold_singularity_image}"
+    publishDir "TIMING/${target_name}/01_PTUSE_FOLDS/", pattern: "*.ar", mode: 'copy'
+
+    input:
+    tuple val(target_name), val(utc), val(psrfits_file_path)
+    path(ephemeris_file)
+    val(threads)
+    val(telescope)
+    val(subint_length)
+    val(bins)
+
+    output:
+    path "*.ar"
+
+    script:
+    """
+    # Find at least one file that matches the wildcard pattern
+    found_file=\$(ls -v ${psrfits_file_path} 2> /dev/null | head -n 1)
+
+    if [[ -z "\$found_file" ]]; then
+        echo "Error: No matching PTUSE files found."
+        exit 1
+    fi
+
+    # Construct the output file name
+    output_filename="${target_name}_${utc}"
+
+    # Run the dspsr command
+    dspsr -scloffs -k ${telescope} -t${threads} -E ${ephemeris_file} -L ${subint_length} -b${bins} -A -O \${output_filename} \$(ls -v ${psrfits_file_path})
+    """
+}
+
+
+process clfd_apsuse {
+    label 'clfd' 
+    container "${params.fold_singularity_image}"
+    publishDir "TIMING/${target_name}/00_APSUSE_FOLDS/", pattern: "*.clfd", mode: 'copy'
+
+    input:
+    path(fold_archive)
+    val(target_name)
+    val(qmask)
+    val(qspike)
+    val(processes)
+
+    output:
+    path "*.clfd"
+
+    script:
+    """
+    clfd --fmt psrchive ${fold_archive} --features std ptp lfamp --qmask ${qmask} --despike --qspike ${qspike} --processes ${processes} -o \${PWD}
+    """
+}
+
+//Nextflow requires to have separate processes if you need to re-use them. Very strange!
+process clfd_ptuse {
+    label 'clfd' 
+    container "${params.fold_singularity_image}"
+    publishDir "TIMING/${target_name}/01_PTUSE_FOLDS/", pattern: "*.clfd", mode: 'copy'
+
+    input:
+    path(fold_archive)
+    val(target_name)
+    val(qmask)
+    val(qspike)
+    val(processes)
+
+    output:
+    path "*.clfd"
+
+    script:
+    """
+    clfd --fmt psrchive ${fold_archive} --features std ptp lfamp --qmask ${qmask} --despike --qspike ${qspike} --processes ${processes} -o \${PWD}
+    """
+}
+
+process pdmp_apsuse {
+    label 'pdmp' 
+    container "${params.fold_singularity_image}"
+    publishDir "TIMING/${target_name}/00_APSUSE_FOLDS/", pattern: "*.png", mode: 'copy'
+
+    input:
+    path(fold_archive)
+    val(target_name)
+    val(nchan)
+    val(nsubint)
+    val(nbin)
+
+    output:
+    path "*.png"
+
+    script:
+    """
+    output_filename=\$(basename "${fold_archive}" | sed 's/\\.[^.]*\$//')
+    pdmp -mc ${nchan} -ms ${nsubint} -mb ${nbin} -g \${output_filename}.png/PNG ${fold_archive}
+    """
+
+}
+
+process pdmp_ptuse {
+    label 'pdmp' 
+    container "${params.fold_singularity_image}"
+    publishDir "TIMING/${target_name}/01_PTUSE_FOLDS/", pattern: "*.png", mode: 'copy'
+
+    input:
+    path(fold_archive)
+    val(target_name)
+    val(nchan)
+    val(nsubint)
+    val(nbin)
+
+    output:
+    path "*.png"
+
+    script:
+    """
+    output_filename=\$(basename "${fold_archive}" | sed 's/\\.[^.]*\$//')
+    pdmp -mc ${nchan} -ms ${nsubint} -mb ${nbin} -g \${output_filename}.png/PNG ${fold_archive}
+    """
+
+}
 
 process query_db {
     label 'query_db'
@@ -158,17 +285,77 @@ workflow {
                                       // Replace space with underscore in utc_start
                                       def utc_start = parts[5].replace(" ", "-")
 
-                                      return tuple(pointing_id, beam_id, filterbank_files, target, beam_num, utc_start)
-                                  }
 
-    // Create channels for each line in the grouped output
-    //grouped_query_output.splitText().view()
+                                      return tuple(pointing_id, beam_id, filterbank_files, target, beam_num, utc_start)
+         
+                                  }
+    def utc_current = processed_data_channel.collect { it[5] }
+
     filtool_output = filtool(processed_data_channel, params.rfi_filter, params.threads, params.telescope)
     nearest_two_output = nearest_power_of_two_calculator(filtool_output)
     fft_size_value = nearest_two_output.map{ file -> file.text.trim() }
 
-    peasoup_output = peasoup(filtool_output, params.dm_file, fft_size_value, params.total_cands_limit, params.min_snr, params.acc_start, params.acc_end, params.ram_limit_gb, params.nh, params.ngpus)
+    peasoup_output = peasoup(filtool_output, params.dm_file, fft_size_value, params.total_cands_limit, params.min_snr, params.acc_start, params.acc_end, params.ram_limit_gb, params.nh, params.ngpus, params.target_name, utc_current)
     phase_predictor_output = create_phase_predictor(peasoup_output, params.period_start, params.period_end, params.target_name)
-    apsuse_folds = fold_apsuse(filtool_output, phase_predictor_output, params.dspsr_threads, params.telescope, params.dspsr_subint_length, params.dspsr_apsuse_bins)
+    if (params.APSUSE_FOLDS == 1) {
+
+        apsuse_folds = fold_apsuse(filtool_output, phase_predictor_output, params.dspsr_apsuse_threads, params.telescope, params.dspsr_apsuse_subint_length, params.dspsr_apsuse_bins, params.target_name)
+        if (params.use_clfd == 1) {
+            clfd_output = clfd_apsuse(apsuse_folds, params.target_name, params.qmask, params.qspike, params.clfd_processes)
+            pdmp_output = pdmp_apsuse(clfd_output, params.target_name, params.nchan, params.nsubint, params.nbins)
+        }
+        else {
+            pdmp_output = pdmp_apsuse(apsuse_folds, params.target_name, params.nchan, params.nsubint, params.nbins)
+        }
+
+    }
+    if (params.PTUSE_FOLDS == 1) {
+
+        processed_data_channel.branch { tuple ->
+        def year = tuple[5].split("-")[0] as int
+        before2023: year < 2023
+        after2023: year >= 2023
+        }.set { yearBranch }
+
+        // Before 2023 PTUSE data is kept in a different directory.
+        ptuse_data_before2023 = yearBranch.before2023.map { tuple ->
+        def parts = tuple[5].split(/-|:/)
+        def dateWithHour = parts[0..3].take(4).join("-")
+        def psrfits_file = "${params.PTUSE1}/${dateWithHour}*/${tuple[3]}/**/*.sf"
+
+        return [tuple[3].trim(), tuple[5].trim(), psrfits_file]
+    }
+        // After 2023 case
+        yearBranch.after2023.map { tuple ->
+        def parts = tuple[5].split(/-|:/) // Splitting by both hyphens and colons
+        def dateWithHour = parts[0..3].take(4).join("-") // Now takes only the first 4 elements
+        def psrfits_file = "${params.PTUSE2}/${dateWithHour}*/${tuple[3]}/**/*.sf"
+
+        // Create a new tuple that includes the psrfits_file
+            return [tuple[3].trim(), tuple[5].trim(), psrfits_file]
+        }.set { ptuse_data_after2023 }
+
+        // Now combine both channels
+
+        all_ptuse_data = ptuse_data_before2023.mix(ptuse_data_after2023)
+
+        ptuse_folds = fold_ptuse(all_ptuse_data, params.ephemeris_file, params.dspsr_ptuse_threads, params.telescope, params.dspsr_ptuse_subint_length, params.dspsr_ptuse_bins)
+        if (params.use_clfd == 1) {
+            clfd_ptuse_output = clfd_ptuse(ptuse_folds, params.target_name, params.qmask, params.qspike, params.clfd_processes)
+            pdmp_output = pdmp_ptuse(clfd_ptuse_output, params.target_name, params.nchan, params.nsubint, params.nbins)
+        }
+        else {
+            pdmp_output = pdmp_ptuse(ptuse_folds, params.target_name, params.nchan, params.nsubint, params.nbins)
+        }
+    }
+
+
+
+   
+
+
+
+
+
 }
 
