@@ -289,8 +289,8 @@ workflow {
                                       return tuple(pointing_id, beam_id, filterbank_files, target, beam_num, utc_start)
          
                                   }
-    def utc_current = processed_data_channel.collect { it[5] }
-
+    utc_current = processed_data_channel.map { tuple -> tuple[5] }
+    
     filtool_output = filtool(processed_data_channel, params.rfi_filter, params.threads, params.telescope)
     nearest_two_output = nearest_power_of_two_calculator(filtool_output)
     fft_size_value = nearest_two_output.map{ file -> file.text.trim() }
@@ -348,13 +348,6 @@ workflow {
             pdmp_output = pdmp_ptuse(ptuse_folds, params.target_name, params.nchan, params.nsubint, params.nbins)
         }
     }
-
-
-
-   
-
-
-
 
 
 }
