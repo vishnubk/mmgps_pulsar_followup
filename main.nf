@@ -289,7 +289,7 @@ workflow {
                                       return tuple(pointing_id, beam_id, filterbank_files, target, beam_num, utc_start)
          
                                   }
-    utc_current = processed_data_channel.map { tuple -> tuple[5] }
+    utc_current = processed_data_channel.map { tuple -> tuple[5].trim() }
     
     filtool_output = filtool(processed_data_channel, params.rfi_filter, params.threads, params.telescope)
     nearest_two_output = nearest_power_of_two_calculator(filtool_output)
