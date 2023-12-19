@@ -30,38 +30,35 @@ process filtool {
     """
 }
 
-process peasoup {
-    label 'peasoup'
-    container "${params.search_singularity_image}"
+// process peasoup {
+//     label 'peasoup'
+//     container "${params.search_singularity_image}"
 
-    input:
-    path(fil_file)
-    path(dm_file) 
-    val(fft_size)
-    val(total_cands_limit)
-    val(min_snr)
-    val(acc_start)
-    val(acc_end)
-    val(ram_limit_gb)
-    val(nh)
-    val(ngpus)
-    val(target_name)
-    val(utc)
+//     input:
+//     path(fil_file)
+//     path(dm_file) 
+//     val(fft_size)
+//     val(total_cands_limit)
+//     val(min_snr)
+//     val(acc_start)
+//     val(acc_end)
+//     val(ram_limit_gb)
+//     val(nh)
+//     val(ngpus)
+//     val(target_name)
+//     val(utc)
 
-    output:
-    path("**/*.xml")
+//     output:
+//     path("**/*.xml")
 
-    script:
-    """
-    #!/bin/bash
+//     script:
+//     """
+//     #!/bin/bash
    
-    peasoup -i ${fil_file} --fft_size ${fft_size} --limit ${total_cands_limit} -m ${min_snr} --acc_start ${acc_start} --acc_end ${acc_end} --dm_file ${dm_file} --ram_limit_gb ${ram_limit_gb} -n ${nh} -t ${ngpus}
-    mkdir -p SEARCH/${task.process}/${utc}/${target_name}
-    rsync -Pav **/*.xml SEARCH/${task.process}/${utc}/${target_name}
+//     peasoup -i ${fil_file} --fft_size ${fft_size} --limit ${total_cands_limit} -m ${min_snr} --acc_start ${acc_start} --acc_end ${acc_end} --dm_file ${dm_file} --ram_limit_gb ${ram_limit_gb} -n ${nh} -t ${ngpus}
 
-
-    """
-}
+//     """
+// }
 
 process create_phase_predictor {
     label 'create_phase_predictor' 

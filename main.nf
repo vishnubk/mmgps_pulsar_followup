@@ -8,8 +8,8 @@ include { filtool as filtool_ptuse } from './modules'
 include { digifil as digifil_apsuse } from './modules'
 include { digifil as digifil_ptuse } from './modules'
 
-include { peasoup as peasoup_apsuse } from './modules'
-include { peasoup as peasoup_ptuse } from './modules'
+// include { peasoup as peasoup_apsuse } from './modules'
+// include { peasoup as peasoup_ptuse } from './modules'
 
 include { create_phase_predictor as create_phase_predictor_apsuse } from './modules'
 include { create_phase_predictor as create_phase_predictor_ptuse } from './modules'
@@ -56,6 +56,71 @@ process query_db {
 
 }
 
+process peasoup_apsuse {
+    label 'peasoup'
+    container "${params.search_singularity_image}"
+    publishDir "SEARCH/${params.target_name}/APSUSE/${beam_name}/", pattern: "**/*.xml", mode: 'copy'
+
+    input:
+    path(fil_file)
+    path(dm_file) 
+    val(fft_size)
+    val(total_cands_limit)
+    val(min_snr)
+    val(acc_start)
+    val(acc_end)
+    val(ram_limit_gb)
+    val(nh)
+    val(ngpus)
+    val(target_name)
+    val(utc)
+    val(beam_name)
+
+    output:
+    path("**/*.xml")
+
+    script:
+    """
+    #!/bin/bash
+   
+    peasoup -i ${fil_file} --fft_size ${fft_size} --limit ${total_cands_limit} -m ${min_snr} --acc_start ${acc_start} --acc_end ${acc_end} --dm_file ${dm_file} --ram_limit_gb ${ram_limit_gb} -n ${nh} -t ${ngpus}
+
+    """
+}
+
+process peasoup_ptuse {
+    label 'peasoup'
+    container "${params.search_singularity_image}"
+    publishDir "SEARCH/${params.target_name}/PTUSE/${beam_name}/", pattern: "**/*.xml", mode: 'copy'
+    
+
+    input:
+    path(fil_file)
+    path(dm_file) 
+    val(fft_size)
+    val(total_cands_limit)
+    val(min_snr)
+    val(acc_start)
+    val(acc_end)
+    val(ram_limit_gb)
+    val(nh)
+    val(ngpus)
+    val(target_name)
+    val(utc)
+    val(beam_name)
+
+    output:
+    path("**/*.xml")
+
+    script:
+    """
+    #!/bin/bash
+   
+    peasoup -i ${fil_file} --fft_size ${fft_size} --limit ${total_cands_limit} -m ${min_snr} --acc_start ${acc_start} --acc_end ${acc_end} --dm_file ${dm_file} --ram_limit_gb ${ram_limit_gb} -n ${nh} -t ${ngpus}
+
+    """
+}
+
 workflow {
 
     grouped_query_output = query_db(params.target_name, params.beam_name, params.utc_start, params.utc_end)
@@ -90,11 +155,12 @@ workflow {
 
         }
         utc_current = processed_data_channel.map { tuple -> tuple[5].trim() }
+        beam_name = processed_data_channel.map { tuple -> tuple[4].trim() }
 
         if (params.APSUSE_SEARCH == 1) {
             nearest_two_output = nearest_power_of_two_calculator_apsuse(merged_filterbank)
             fft_size_value = nearest_two_output.map{ file -> file.text.trim() }
-            peasoup_output = peasoup_apsuse(merged_filterbank, params.dm_file, fft_size_value, params.total_cands_limit, params.min_snr, params.acc_start, params.acc_end, params.ram_limit_gb, params.nh, params.ngpus, params.target_name, utc_current)
+            peasoup_output = peasoup_apsuse(merged_filterbank, params.dm_file, fft_size_value, params.total_cands_limit, params.min_snr, params.acc_start, params.acc_end, params.ram_limit_gb, params.nh, params.ngpus, params.target_name, utc_current, beam_name)
             phase_predictor_output = create_phase_predictor_apsuse(peasoup_output, params.period_start, params.period_end, params.target_name)
             collected_phase_predictors = phase_predictor_output.collect()
             apsuse_folds = apsuse_fold_phase_predictor(merged_filterbank, collected_phase_predictors, params.dspsr_apsuse_threads, params.telescope, params.dspsr_apsuse_subint_length, params.dspsr_apsuse_bins, params.target_name)
@@ -109,7 +175,7 @@ workflow {
 
         }
         // User asked for APSUSE_EPH_FOLD.
-        else {
+        if (params.APSUSE_EPH_FOLD == 1) {
         
             apsuse_folds = apsuse_fold_ephemeris(params.target_name,utc_current, merged_filterbank, params.ephemeris_file, params.dspsr_apsuse_threads, params.telescope, params.dspsr_apsuse_subint_length, params.dspsr_apsuse_bins)
             if (params.use_clfd == 1) {
@@ -169,7 +235,7 @@ workflow {
         
             nearest_two_output_ptuse = nearest_power_of_two_calculator_ptuse(merged_filterbank_ptuse)
             fft_size_value_ptuse = nearest_two_output_ptuse.map{ file -> file.text.trim() }
-            peasoup_output_ptuse = peasoup_ptuse(merged_filterbank_ptuse, params.dm_file, fft_size_value_ptuse, params.total_cands_limit, params.min_snr, params.acc_start, params.acc_end, params.ram_limit_gb, params.nh, params.ngpus, params.target_name, ptuse_utc)
+            peasoup_output_ptuse = peasoup_ptuse(merged_filterbank_ptuse, params.dm_file, fft_size_value_ptuse, params.total_cands_limit, params.min_snr, params.acc_start, params.acc_end, params.ram_limit_gb, params.nh, params.ngpus, params.target_name, ptuse_utc, beam_name)
             phase_predictor_output_ptuse = create_phase_predictor_ptuse(peasoup_output_ptuse, params.period_start, params.period_end, params.target_name)
             collected_phase_predictors_ptuse = phase_predictor_output_ptuse.collect()
 
@@ -187,7 +253,7 @@ workflow {
 
         }
         // PTUSE EPH FOLD CASE
-        else 
+        if (params.PTUSE_EPH_FOLD == 1)
 
         {
         
