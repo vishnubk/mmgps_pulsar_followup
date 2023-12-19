@@ -209,7 +209,7 @@ process pdmp {
 
     script:
     """
-    output_filename=\$(basename "${fold_archive}" | sed 's/\\.[^.]*\$//')
+    output_filename=\$(basename ${fold_archive} | sed 's/\\.[^.]*\$//')
     pdmp -mc ${nchan} -ms ${nsubint} -mb ${nbin} -g \${output_filename}.png/PNG ${fold_archive}
     """
 

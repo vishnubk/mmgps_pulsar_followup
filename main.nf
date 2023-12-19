@@ -59,7 +59,7 @@ process query_db {
 process peasoup_apsuse {
     label 'peasoup'
     container "${params.search_singularity_image}"
-    publishDir "SEARCH/${params.target_name}/APSUSE/${beam_name}/", pattern: "**/*.xml", mode: 'copy'
+    publishDir "SEARCH/${params.target_name}/APSUSE/${utc}/${beam_name}/", pattern: "**/*.xml", mode: 'copy'
 
     input:
     path(fil_file)
@@ -91,7 +91,7 @@ process peasoup_apsuse {
 process peasoup_ptuse {
     label 'peasoup'
     container "${params.search_singularity_image}"
-    publishDir "SEARCH/${params.target_name}/PTUSE/${beam_name}/", pattern: "**/*.xml", mode: 'copy'
+    publishDir "SEARCH/${params.target_name}/PTUSE/${utc}/${beam_name}/", pattern: "**/*.xml", mode: 'copy'
     
 
     input:
