@@ -41,13 +41,11 @@ for candidate in candidates:
 
 df = pd.DataFrame(rows)
 df['Epoch_Mid'] = new_epoch
-df = df.astype({"snr": float, "dm": float, "period": float, "nh":int, "acc": float, "nassoc": int})
-
+df = df.astype({"snr": float, "dm": float, "period": float, "nh":int, "acc": float, "nassoc": int, "cand_id_in_file": int})
 cands_selected = df.loc[(df['period'] >= period_start) & (df['period'] <= period_end)]
 
-
 for index, row in cands_selected.iterrows():
-    with open('predictor_candidate_%d' %index, 'w') as f:
+    with open('predictor_candidate_%d' %row['cand_id_in_file'], 'w') as f:
         f.write("SOURCE: " + target_name + '\n' + \
                 "EPOCH: " + str(new_epoch) + '\n' + \
                 "PERIOD: " + str(row['period']) + 's' + '\n' + \

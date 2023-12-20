@@ -161,9 +161,15 @@ workflow {
             nearest_two_output = nearest_power_of_two_calculator_apsuse(merged_filterbank)
             fft_size_value = nearest_two_output.map{ file -> file.text.trim() }
             peasoup_output = peasoup_apsuse(merged_filterbank, params.dm_file, fft_size_value, params.total_cands_limit, params.min_snr, params.acc_start, params.acc_end, params.ram_limit_gb, params.nh, params.ngpus, params.target_name, utc_current, beam_name)
-            phase_predictor_output = create_phase_predictor_apsuse(peasoup_output, params.period_start, params.period_end, params.target_name)
-            collected_phase_predictors = phase_predictor_output.collect()
-            apsuse_folds = apsuse_fold_phase_predictor(merged_filterbank, collected_phase_predictors, params.dspsr_apsuse_threads, params.telescope, params.dspsr_apsuse_subint_length, params.dspsr_apsuse_bins, params.target_name)
+            phase_predictor_output = create_phase_predictor_apsuse(peasoup_output, params.period_start, params.period_end, params.target_name, merged_filterbank)
+            grouped_predictors = phase_predictor_output.groupTuple()
+            flattened_predictors = grouped_predictors.flatMap { input_file, predictors ->
+            predictors.collect { predictor -> tuple(input_file, predictor) }
+            }
+            
+            data_phase_predictor_pair = flattened_predictors.transpose()
+           
+            apsuse_folds = apsuse_fold_phase_predictor(data_phase_predictor_pair, params.dspsr_apsuse_threads, params.telescope, params.dspsr_apsuse_subint_length, params.dspsr_apsuse_bins, params.target_name)
 
             if (params.use_clfd == 1) {
                 clfd_output = clfd_apsuse_predictor(apsuse_folds, params.target_name, params.qmask, params.qspike, params.clfd_processes)
@@ -176,8 +182,8 @@ workflow {
         }
         // User asked for APSUSE_EPH_FOLD.
         if (params.APSUSE_EPH_FOLD == 1) {
-        
-            apsuse_folds = apsuse_fold_ephemeris(params.target_name,utc_current, merged_filterbank, params.ephemeris_file, params.dspsr_apsuse_threads, params.telescope, params.dspsr_apsuse_subint_length, params.dspsr_apsuse_bins)
+            all_par_files_apsuse = Channel.fromPath("${params.ephemeris_files_dir}/*.par")
+            apsuse_folds = apsuse_fold_ephemeris(params.target_name, utc_current, merged_filterbank, all_par_files_apsuse, params.dspsr_apsuse_threads, params.telescope, params.dspsr_apsuse_subint_length, params.dspsr_apsuse_bins)
             if (params.use_clfd == 1) {
                 clfd_output = clfd_apsuse_eph(apsuse_folds, params.target_name, params.qmask, params.qspike, params.clfd_processes)
                 pdmp_output = pdmp_apsuse_eph(clfd_output, params.target_name, params.nchan, params.nsubint, params.nbins)
@@ -236,10 +242,15 @@ workflow {
             nearest_two_output_ptuse = nearest_power_of_two_calculator_ptuse(merged_filterbank_ptuse)
             fft_size_value_ptuse = nearest_two_output_ptuse.map{ file -> file.text.trim() }
             peasoup_output_ptuse = peasoup_ptuse(merged_filterbank_ptuse, params.dm_file, fft_size_value_ptuse, params.total_cands_limit, params.min_snr, params.acc_start, params.acc_end, params.ram_limit_gb, params.nh, params.ngpus, params.target_name, ptuse_utc, beam_name)
-            phase_predictor_output_ptuse = create_phase_predictor_ptuse(peasoup_output_ptuse, params.period_start, params.period_end, params.target_name)
-            collected_phase_predictors_ptuse = phase_predictor_output_ptuse.collect()
+            phase_predictor_output_ptuse = create_phase_predictor_ptuse(peasoup_output_ptuse, params.period_start, params.period_end, params.target_name, merged_filterbank_ptuse)
+            grouped_predictors_ptuse = phase_predictor_output_ptuse.groupTuple()
+            flattened_predictors_ptuse = grouped_predictors_ptuse.flatMap { input_file, predictors ->
+            predictors.collect { predictor -> tuple(input_file, predictor) }
+              }
 
-            ptuse_folds_pred = ptuse_fold_phase_predictor(merged_filterbank_ptuse, collected_phase_predictors_ptuse, params.dspsr_ptuse_threads, params.telescope, params.dspsr_ptuse_subint_length, params.dspsr_ptuse_bins, params.target_name)
+            data_phase_predictor_pair_ptuse = flattened_predictors_ptuse.transpose()
+
+            ptuse_folds_pred = ptuse_fold_phase_predictor(data_phase_predictor_pair_ptuse, params.dspsr_ptuse_threads, params.telescope, params.dspsr_ptuse_subint_length, params.dspsr_ptuse_bins, params.target_name)
 
             if (params.use_clfd == 1) {
                 clfd_output_ptuse_pred = clfd_ptuse_predictor(ptuse_folds_pred, params.target_name, params.qmask, params.qspike, params.clfd_processes)
@@ -247,17 +258,15 @@ workflow {
             }
             else {
                 pdmp_output = pdmp_ptuse_predictor(ptuse_folds_pred, params.target_name, params.nchan, params.nsubint, params.nbins)
-            }
-
-          
+            }   
 
         }
         // PTUSE EPH FOLD CASE
         if (params.PTUSE_EPH_FOLD == 1)
 
         {
-        
-            ptuse_folds_eph = ptuse_fold_ephemeris(params.target_name, ptuse_utc, merged_filterbank_ptuse, params.ephemeris_file, params.dspsr_ptuse_threads, params.telescope, params.dspsr_ptuse_subint_length, params.dspsr_ptuse_bins)
+            all_par_files_ptuse = Channel.fromPath("${params.ephemeris_files_dir}/*.par")
+            ptuse_folds_eph = ptuse_fold_ephemeris(params.target_name, ptuse_utc, merged_filterbank_ptuse, all_par_files_ptuse, params.dspsr_ptuse_threads, params.telescope, params.dspsr_ptuse_subint_length, params.dspsr_ptuse_bins)
             if (params.use_clfd == 1) {
                 clfd_output_ptuse_eph = clfd_ptuse_eph(ptuse_folds_eph, params.target_name, params.qmask, params.qspike, params.clfd_processes)
                 pdmp_output = pdmp_ptuse_eph(clfd_output_ptuse_eph, params.target_name, params.nchan, params.nsubint, params.nbins)

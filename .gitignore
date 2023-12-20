@@ -3,4 +3,4 @@ work/
 .nextflow*
 SEARCH/
 TIMING/
-M30B_DD.par
+*par

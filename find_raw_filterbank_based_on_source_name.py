@@ -55,7 +55,7 @@ if args.beam:
     JOIN beam b ON dp.beam_id = b.id
     JOIN target t ON p.target_id = t.id
     JOIN file_type ft ON dp.file_type_id = ft.id
-    WHERE t.source_name LIKE %s AND b.name LIKE %s AND ft.name LIKE %s ''' + date_condition + '''order by p.utc_start desc
+    WHERE dp.available = 1 AND t.source_name LIKE %s AND b.name LIKE %s AND ft.name LIKE %s ''' + date_condition + '''order by p.utc_start desc
     '''
 
     params = (source_name, beam_name, file_type_pattern)
@@ -71,7 +71,7 @@ else:
     JOIN beam b ON dp.beam_id = b.id
     JOIN target t ON p.target_id = t.id
     JOIN file_type ft ON dp.file_type_id = ft.id
-    WHERE t.source_name LIKE %s AND ft.name LIKE %s ''' + date_condition + '''order by p.utc_start desc, b.name asc
+    WHERE dp.available = 1 AND t.source_name LIKE %s AND ft.name LIKE %s ''' + date_condition + '''order by p.utc_start desc, b.name asc
     '''
 
     params = (source_name, file_type_pattern)

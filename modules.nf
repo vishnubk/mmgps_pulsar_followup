@@ -30,36 +30,6 @@ process filtool {
     """
 }
 
-// process peasoup {
-//     label 'peasoup'
-//     container "${params.search_singularity_image}"
-
-//     input:
-//     path(fil_file)
-//     path(dm_file) 
-//     val(fft_size)
-//     val(total_cands_limit)
-//     val(min_snr)
-//     val(acc_start)
-//     val(acc_end)
-//     val(ram_limit_gb)
-//     val(nh)
-//     val(ngpus)
-//     val(target_name)
-//     val(utc)
-
-//     output:
-//     path("**/*.xml")
-
-//     script:
-//     """
-//     #!/bin/bash
-   
-//     peasoup -i ${fil_file} --fft_size ${fft_size} --limit ${total_cands_limit} -m ${min_snr} --acc_start ${acc_start} --acc_end ${acc_end} --dm_file ${dm_file} --ram_limit_gb ${ram_limit_gb} -n ${nh} -t ${ngpus}
-
-//     """
-// }
-
 process create_phase_predictor {
     label 'create_phase_predictor' 
     container "${params.fold_singularity_image}"
@@ -69,9 +39,12 @@ process create_phase_predictor {
     val(period_start)
     val(period_end)
     val(target_name)
+    val(input_file) //filterbank file used for grouping later.
 
     output:
-    path "predictor_candidate_*"
+
+    tuple (val(input_file), path("predictor_candidate_*"), optional: true)
+
 
     script:
     """
@@ -112,8 +85,7 @@ process dspsr_fold_phase_predictor {
     container "${params.fold_singularity_image}"
 
     input:
-    path(fil_file)
-    each path(phase_predictor)
+    tuple val(fil_file), path(phase_predictor)
     val(threads)
     val(telescope)
     val(subint_length)
@@ -125,8 +97,20 @@ process dspsr_fold_phase_predictor {
 
     script:
     """
+    # Extract the basename of the filterbank file
     output_filename=\$(basename ${fil_file} .fil)
-    dspsr -k ${telescope} -t${threads} -P ${phase_predictor} -L ${subint_length} -b${bins} -A -O \${output_filename} ${fil_file}
+
+    # Extract the basename of the phase_predictor file
+    phase_predictor_basename=\$(basename ${phase_predictor})
+
+    # Extract the candidate number from the phase_predictor basename
+    candidate_id=\$(echo \${phase_predictor_basename} | sed 's/predictor_candidate_//')
+
+    # Append the candidate_id to the output filename
+    output_filename_with_candidate_id=\${output_filename}_candidate_id_\${candidate_id}
+
+    # Run dspsr with the modified output filename
+    dspsr -k ${telescope} -t${threads} -P ${phase_predictor} -L ${subint_length} -b${bins} -A -O \${output_filename_with_candidate_id} ${fil_file}
     """
 }
 
@@ -158,8 +142,13 @@ process dspsr_fold_ephemeris {
         exit 1
     fi
 
-    # Construct the output file name
-    output_filename="${target_name}_${utc}"
+    # Extracting basename and filename without extension from ephemeris_file
+    ephemeris_basename=\$(basename ${ephemeris_file})
+    ephemeris_name_no_ext=\${ephemeris_basename%.*}
+
+    # Construct the output file name with ephemeris file suffix
+    output_filename="${target_name}_${utc}_\${ephemeris_name_no_ext}"
+
     # Check the file extension of the found file
     file_extension="\${found_file##*.}"
     echo \${file_extension}
@@ -172,6 +161,7 @@ process dspsr_fold_ephemeris {
     fi
     """
 }
+
 
 process clfd {
     label 'clfd' 
