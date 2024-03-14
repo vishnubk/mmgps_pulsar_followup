@@ -230,9 +230,7 @@ process dspsr_fold_ephemeris {
     container "${params.fold_singularity_image}"
 
     input:
-    tuple val(file_path), path(ephemeris_file)
-    val(target_name) 
-    //val(utc)
+    tuple val(file_path), val(target_name), val(beam_name), val(utc_start), path(ephemeris_file)
     val(threads)
     val(telescope)
     val(subint_length)
@@ -257,7 +255,7 @@ process dspsr_fold_ephemeris {
     
     raw_data_basename=\$(basename ${file_path})
     # Construct the output file name with ephemeris file suffix
-    output_filename="${target_name}_${utc}_\${ephemeris_name_no_ext}"
+    output_filename="${target_name}_${utc_start}_\${ephemeris_name_no_ext}"
 
     # Check the file extension of the found file
     file_extension="\${found_file##*.}"

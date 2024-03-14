@@ -200,39 +200,23 @@ workflow {
        
         }}
     
-            
-            // data_phase_predictor_pair = flattened_predictors.transpose()
-           
-            // apsuse_folds = apsuse_fold_phase_predictor(data_phase_predictor_pair, params.dspsr_apsuse_threads, params.telescope, params.dspsr_apsuse_subint_length, params.dspsr_apsuse_bins, params.target_name)
-
-            // if (params.use_clfd == 1) {
-            //     clfd_output = clfd_apsuse_predictor(apsuse_folds, params.target_name, params.qmask, params.qspike, params.clfd_processes)
-            //     pdmp_output = pdmp_apsuse_predictor(clfd_output, params.target_name, params.nchan, params.nsubint, params.nbins)
-            // }
-            // else {
-            //     pdmp_output = pdmp_apsuse_predictor(apsuse_folds, params.target_name, params.nchan, params.nsubint, params.nbins)
-            // }
-
         
         // User asked for APSUSE_EPH_FOLD.
         if (params.APSUSE_EPH_FOLD == 1) {
             all_par_files_apsuse = Channel.fromPath("${params.ephemeris_files_dir}/*.par")
+            
             // Combine par file and filterbank file channel using a cartesian product. Each par file will apply on all filterbank files.
-            combined_channel_apuse_eph_fold = merged_filterbank.combine(all_par_files_apsuse)  
-            test = combined_channel_apuse_eph_fold.combine(utc_current)
-            utc_current.view()
-            combined_channel_apuse_eph_fold.view()
-            test.view()
+            combined_channel_apuse_eph_fold = updated_filterbank_channel.combine(all_par_files_apsuse)  
 
-            // apsuse_folds = apsuse_fold_ephemeris(combined_channel_apuse_eph_fold, params.target_name, utc_current, params.dspsr_apsuse_threads, params.telescope, params.dspsr_apsuse_subint_length, params.dspsr_apsuse_bins)
+            apsuse_folds = apsuse_fold_ephemeris(combined_channel_apuse_eph_fold, params.dspsr_apsuse_threads, params.telescope, params.dspsr_apsuse_subint_length, params.dspsr_apsuse_bins)
 
-            // if (params.use_clfd == 1) {
-            //     clfd_output = clfd_apsuse_eph(apsuse_folds, params.target_name, params.qmask, params.qspike, params.clfd_processes)
-            //     pdmp_output = pdmp_apsuse_eph(clfd_output, params.target_name, params.nchan, params.nsubint, params.nbins)
-            // }
-            // else {
-            //     pdmp_output = pdmp_apsuse_eph(apsuse_folds, params.target_name, params.nchan, params.nsubint, params.nbins)
-            // }
+            if (params.use_clfd == 1) {
+                clfd_output = clfd_apsuse_eph(apsuse_folds, params.target_name, params.qmask, params.qspike, params.clfd_processes)
+                pdmp_output = pdmp_apsuse_eph(clfd_output, params.target_name, params.nchan, params.nsubint, params.nbins)
+            }
+            else {
+                pdmp_output = pdmp_apsuse_eph(apsuse_folds, params.target_name, params.nchan, params.nsubint, params.nbins)
+            }
 
         }
     }
