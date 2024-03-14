@@ -8,8 +8,7 @@ include { filtool as filtool_ptuse } from './modules'
 include { digifil as digifil_apsuse } from './modules'
 include { digifil as digifil_ptuse } from './modules'
 
-// include { peasoup as peasoup_apsuse } from './modules'
-// include { peasoup as peasoup_ptuse } from './modules'
+
 
 include { create_phase_predictor as create_phase_predictor_apsuse } from './modules'
 include { create_phase_predictor as create_phase_predictor_ptuse } from './modules'
@@ -18,8 +17,12 @@ include { nearest_power_of_two_calculator as nearest_power_of_two_calculator_aps
 include { nearest_power_of_two_calculator as nearest_power_of_two_calculator_ptuse } from './modules'
 
 
-include { dspsr_fold_phase_predictor as apsuse_fold_phase_predictor } from './modules'
+//include { dspsr_fold_phase_predictor as apsuse_fold_phase_predictor } from './modules'
+include { dspsr_fold_phase_predictor_parallel as apsuse_fold_phase_predictor_parallel } from './modules'
+include { dspsr_fold_phase_predictor_serial as apsuse_fold_phase_predictor_serial } from './modules'
+
 include { dspsr_fold_phase_predictor as ptuse_fold_phase_predictor } from './modules'
+
 include { dspsr_fold_ephemeris as apsuse_fold_ephemeris } from './modules'
 include { dspsr_fold_ephemeris as ptuse_fold_ephemeris } from './modules'
 
@@ -62,9 +65,8 @@ process peasoup_apsuse {
     publishDir "SEARCH/${params.target_name}/APSUSE/${utc}/${beam_name}/", pattern: "**/*.xml", mode: 'copy'
 
     input:
-    path(fil_file)
+    tuple path(fil_file), val(target_name), val(beam_name), val(utc), val(fft_size)
     path(dm_file) 
-    val(fft_size)
     val(total_cands_limit)
     val(min_snr)
     val(acc_start)
@@ -72,12 +74,10 @@ process peasoup_apsuse {
     val(ram_limit_gb)
     val(nh)
     val(ngpus)
-    val(target_name)
-    val(utc)
-    val(beam_name)
+    
 
     output:
-    path("**/*.xml")
+    tuple path(fil_file), val(target_name), val(beam_name), val(utc), val(fft_size), path("**/*.xml")
 
     script:
     """
@@ -95,9 +95,8 @@ process peasoup_ptuse {
     
 
     input:
-    path(fil_file)
+    tuple path(fil_file), val(target_name), val(beam_name), val(utc), val(fft_size)
     path(dm_file) 
-    val(fft_size)
     val(total_cands_limit)
     val(min_snr)
     val(acc_start)
@@ -105,9 +104,7 @@ process peasoup_ptuse {
     val(ram_limit_gb)
     val(nh)
     val(ngpus)
-    val(target_name)
-    val(utc)
-    val(beam_name)
+    
 
     output:
     path("**/*.xml")
@@ -124,14 +121,16 @@ process peasoup_ptuse {
 workflow {
 
     grouped_query_output = query_db(params.target_name, params.beam_name, params.utc_start, params.utc_end)
-    processed_data_channel = grouped_query_output.splitText()
+    grouped_query_output.view()
+    // Selecting filterbank_files, target, beam_num, utc_start
+    filterbank_channel_with_metadata = grouped_query_output.splitText()
                                   .toList()
                                   .flatMap { it.toList()[1..-1] } // Skip the first line (header)
                                   .map { line ->
                                       def parts = line.split('\t')
 
-                                      def pointing_id = parts[0]
-                                      def beam_id = parts[1]
+                                    //   def pointing_id = parts[0]
+                                    //   def beam_id = parts[1]
                                       def filterbank_files = parts[2]
                                       def target = parts[3]
                                       def beam_num = parts[4].replace(" ", "")
@@ -139,37 +138,56 @@ workflow {
                                       def utc_start = parts[5].replace(" ", "-")
 
 
-                                      return tuple(pointing_id, beam_id, filterbank_files, target, beam_num, utc_start)
+                                      return tuple(filterbank_files, target, beam_num, utc_start)
          
                                   }
-    raw_data = processed_data_channel.map { tuple -> tuple[2].trim() }
+
     if (params.APSUSE_SEARCH == 1 || params.APSUSE_EPH_FOLD == 1) {
 
         if (params.use_filtool_apsuse == 1){
         
-            merged_filterbank = filtool_apsuse(raw_data, processed_data_channel, params.filtool_rfi_filter, params.filtool_threads, params.telescope)
+            processed_filterbank = filtool_apsuse(filterbank_channel_with_metadata, params.filtool_rfi_filter, params.filtool_threads, params.telescope)
         }
         else
         {
-            merged_filterbank = digifil_apsuse(raw_data, processed_data_channel, params.nbits, params.digifil_threads, params.digifil_decimate_time_apsuse)
+            processed_filterbank = digifil_apsuse(filterbank_channel_with_metadata, params.nbits, params.digifil_threads, params.digifil_decimate_time_apsuse)
 
         }
-        utc_current = processed_data_channel.map { tuple -> tuple[5].trim() }
-        beam_name = processed_data_channel.map { tuple -> tuple[4].trim() }
-
+        //Add the filterbank file from filtool/digifil along with metadata to a single channel.
+        updated_filterbank_channel = processed_filterbank.map { metadata, filepath ->
+        def (raw_filterbank, target, beam_name, utc_start) = metadata
+        // Trim the string values
+        target = target.trim()
+        beam_name = beam_name.trim()
+        utc_start = utc_start.trim()
+        return tuple(filepath, target, beam_name, utc_start)
+                                                              }
+       
         if (params.APSUSE_SEARCH == 1) {
-            nearest_two_output = nearest_power_of_two_calculator_apsuse(merged_filterbank)
-            fft_size_value = nearest_two_output.map{ file -> file.text.trim() }
-            peasoup_output = peasoup_apsuse(merged_filterbank, params.dm_file, fft_size_value, params.total_cands_limit, params.min_snr, params.acc_start, params.acc_end, params.ram_limit_gb, params.nh, params.ngpus, params.target_name, utc_current, beam_name)
-            phase_predictor_output = create_phase_predictor_apsuse(peasoup_output, params.period_start, params.period_end, params.target_name, merged_filterbank)
-            grouped_predictors = phase_predictor_output.groupTuple()
-            flattened_predictors = grouped_predictors.flatMap { input_file, predictors ->
-            predictors.collect { predictor -> tuple(input_file, predictor) }
+            nearest_two_output = nearest_power_of_two_calculator_apsuse(updated_filterbank_channel)
+            peasoup_output = peasoup_apsuse(nearest_two_output, params.dm_file, params.total_cands_limit, params.min_snr, params.acc_start, params.acc_end, params.ram_limit_gb, params.nh, params.ngpus)
+            phase_predictor_output = create_phase_predictor_apsuse(peasoup_output, params.period_start, params.period_end)
+
+            if (params.parallel_fold == 1) {
+                restructured_phase_predictor_output = phase_predictor_output.flatMap { fil_file, target_name, beam_name, utc_start, fft_size, xml_file, phase_predictors ->
+                    // Check if phase_predictors is a list (or tuple)
+                    if (phase_predictors instanceof List || phase_predictors.getClass().isArray()) {
+                        phase_predictors.collect { phase_predictor ->
+                            return [fil_file, target_name, beam_name, utc_start, fft_size, xml_file, phase_predictor]
+                        }
+                    } else {
+                        // If it's a single element, return it as it is
+                        return [[fil_file, target_name, beam_name, utc_start, fft_size, xml_file, phase_predictors]]
+                    }
+                }
+                
+                apsuse_folds = apsuse_fold_phase_predictor_parallel(restructured_phase_predictor_output, params.dspsr_apsuse_threads, params.telescope, params.dspsr_apsuse_subint_length, params.dspsr_apsuse_bins)
             }
-            
-            data_phase_predictor_pair = flattened_predictors.transpose()
-           
-            apsuse_folds = apsuse_fold_phase_predictor(data_phase_predictor_pair, params.dspsr_apsuse_threads, params.telescope, params.dspsr_apsuse_subint_length, params.dspsr_apsuse_bins, params.target_name)
+            //Folding candidates in serial. Use this when you have only a few spin period cands.
+            else{
+
+                apsuse_folds = apsuse_fold_phase_predictor_serial(phase_predictor_output, params.dspsr_apsuse_threads, params.telescope, params.dspsr_apsuse_subint_length, params.dspsr_apsuse_bins)
+            }
 
             if (params.use_clfd == 1) {
                 clfd_output = clfd_apsuse_predictor(apsuse_folds, params.target_name, params.qmask, params.qspike, params.clfd_processes)
@@ -179,109 +197,135 @@ workflow {
                 pdmp_output = pdmp_apsuse_predictor(apsuse_folds, params.target_name, params.nchan, params.nsubint, params.nbins)
             }
 
-        }
+       
+        }}
+    
+            
+            // data_phase_predictor_pair = flattened_predictors.transpose()
+           
+            // apsuse_folds = apsuse_fold_phase_predictor(data_phase_predictor_pair, params.dspsr_apsuse_threads, params.telescope, params.dspsr_apsuse_subint_length, params.dspsr_apsuse_bins, params.target_name)
+
+            // if (params.use_clfd == 1) {
+            //     clfd_output = clfd_apsuse_predictor(apsuse_folds, params.target_name, params.qmask, params.qspike, params.clfd_processes)
+            //     pdmp_output = pdmp_apsuse_predictor(clfd_output, params.target_name, params.nchan, params.nsubint, params.nbins)
+            // }
+            // else {
+            //     pdmp_output = pdmp_apsuse_predictor(apsuse_folds, params.target_name, params.nchan, params.nsubint, params.nbins)
+            // }
+
+        
         // User asked for APSUSE_EPH_FOLD.
         if (params.APSUSE_EPH_FOLD == 1) {
             all_par_files_apsuse = Channel.fromPath("${params.ephemeris_files_dir}/*.par")
-            apsuse_folds = apsuse_fold_ephemeris(params.target_name, utc_current, merged_filterbank, all_par_files_apsuse, params.dspsr_apsuse_threads, params.telescope, params.dspsr_apsuse_subint_length, params.dspsr_apsuse_bins)
-            if (params.use_clfd == 1) {
-                clfd_output = clfd_apsuse_eph(apsuse_folds, params.target_name, params.qmask, params.qspike, params.clfd_processes)
-                pdmp_output = pdmp_apsuse_eph(clfd_output, params.target_name, params.nchan, params.nsubint, params.nbins)
-            }
-            else {
-                pdmp_output = pdmp_apsuse_eph(apsuse_folds, params.target_name, params.nchan, params.nsubint, params.nbins)
-            }
+            // Combine par file and filterbank file channel using a cartesian product. Each par file will apply on all filterbank files.
+            combined_channel_apuse_eph_fold = merged_filterbank.combine(all_par_files_apsuse)  
+            test = combined_channel_apuse_eph_fold.combine(utc_current)
+            utc_current.view()
+            combined_channel_apuse_eph_fold.view()
+            test.view()
+
+            // apsuse_folds = apsuse_fold_ephemeris(combined_channel_apuse_eph_fold, params.target_name, utc_current, params.dspsr_apsuse_threads, params.telescope, params.dspsr_apsuse_subint_length, params.dspsr_apsuse_bins)
+
+            // if (params.use_clfd == 1) {
+            //     clfd_output = clfd_apsuse_eph(apsuse_folds, params.target_name, params.qmask, params.qspike, params.clfd_processes)
+            //     pdmp_output = pdmp_apsuse_eph(clfd_output, params.target_name, params.nchan, params.nsubint, params.nbins)
+            // }
+            // else {
+            //     pdmp_output = pdmp_apsuse_eph(apsuse_folds, params.target_name, params.nchan, params.nsubint, params.nbins)
+            // }
 
         }
     }
 
-    if (params.PTUSE_SEARCH == 1 || params.PTUSE_EPH_FOLD == 1) {
+    // if (params.PTUSE_SEARCH == 1 || params.PTUSE_EPH_FOLD == 1) {
 
-        processed_data_channel.branch { tuple ->
-        def year = tuple[5].split("-")[0] as int
-        before2023: year < 2023
-        after2023: year >= 2023
-        }.set { yearBranch }
+    //     processed_data_channel.branch { tuple ->
+    //     def year = tuple[5].split("-")[0] as int
+    //     before2023: year < 2023
+    //     after2023: year >= 2023
+    //     }.set { yearBranch }
 
-        // Before 2023 PTUSE data is kept in a different directory.
-        ptuse_data_before2023 = yearBranch.before2023.map { tuple ->
-        def parts = tuple[5].split(/-|:/)
-        def dateWithHour = parts[0..3].take(4).join("-")
-        def psrfits_file = "${params.PTUSE1}/${dateWithHour}*/${tuple[3]}/**/*.sf"
+    //     // Before 2023 PTUSE data is kept in a different directory.
+    //     ptuse_data_before2023 = yearBranch.before2023.map { tuple ->
+    //     def parts = tuple[5].split(/-|:/)
+    //     def dateWithHour = parts[0..3].take(4).join("-")
+    //     def psrfits_file = "${params.PTUSE1}/${dateWithHour}*/${tuple[3]}/**/*.sf"
 
-        return [dateWithHour, psrfits_file]
-    }
-        // After 2023 case
-        yearBranch.after2023.map { tuple ->
-        def parts = tuple[5].split(/-|:/) // Splitting by both hyphens and colons
-        def dateWithHour = parts[0..3].take(4).join("-") // Now takes only the first 4 elements
-        def psrfits_file = "${params.PTUSE2}/${dateWithHour}*/${tuple[3]}/**/*.sf"
+    //     return [dateWithHour, psrfits_file]
+    // }
+    //     // After 2023 case
+    //     yearBranch.after2023.map { tuple ->
+    //     def parts = tuple[5].split(/-|:/) // Splitting by both hyphens and colons
+    //     def dateWithHour = parts[0..3].take(4).join("-") // Now takes only the first 4 elements
+    //     def psrfits_file = "${params.PTUSE2}/${dateWithHour}*/${tuple[3]}/**/*.sf"
 
-        // Create a new tuple that includes the psrfits_file
-            return [dateWithHour, psrfits_file]
-        }.set { ptuse_data_after2023 }
+    //     // Create a new tuple that includes the psrfits_file
+    //         return [dateWithHour, psrfits_file]
+    //     }.set { ptuse_data_after2023 }
 
-        // Now combine both channels
+    //     // Now combine both channels
 
-        all_ptuse_data = ptuse_data_before2023.mix(ptuse_data_after2023)
-        ptuse_utc = all_ptuse_data.map { tuple -> tuple[0].trim() }
-        ptuse_data = all_ptuse_data.map { tuple -> tuple[1].trim() }
+    //     all_ptuse_data = ptuse_data_before2023.mix(ptuse_data_after2023)
+    //     ptuse_utc = all_ptuse_data.map { tuple -> tuple[0].trim() }
+    //     ptuse_data = all_ptuse_data.map { tuple -> tuple[1].trim() }
 
-        if (params.use_filtool_ptuse == 1){
-            // Temporarily running filtool on PTUSE data is disabled until the bug is resolved. So we run digifil and no cleaning in both cases!
-            //merged_filterbank_ptuse = filtool_ptuse(ptuse_data, processed_data_channel, params.filtool_rfi_filter, params.filtool_threads, params.telescope)
-            merged_filterbank_ptuse = digifil_ptuse(ptuse_data, processed_data_channel, params.nbits, params.digifil_threads, params.digifil_decimate_time_ptuse)
-        }
-        else {
-            merged_filterbank_ptuse = digifil_ptuse(ptuse_data, processed_data_channel, params.nbits, params.digifil_threads, params.digifil_decimate_time_ptuse)
+    //     if (params.use_filtool_ptuse == 1){
+    //         // Temporarily running filtool on PTUSE data is disabled until the bug is resolved. So we run digifil and no cleaning in both cases!
+    //         //merged_filterbank_ptuse = filtool_ptuse(ptuse_data, processed_data_channel, params.filtool_rfi_filter, params.filtool_threads, params.telescope)
+    //         merged_filterbank_ptuse = digifil_ptuse(ptuse_data, processed_data_channel, params.nbits, params.digifil_threads, params.digifil_decimate_time_ptuse)
+    //     }
+    //     else {
+    //         merged_filterbank_ptuse = digifil_ptuse(ptuse_data, processed_data_channel, params.nbits, params.digifil_threads, params.digifil_decimate_time_ptuse)
 
-        }
-        if (params.PTUSE_SEARCH == 1){
+    //     }
+    //     if (params.PTUSE_SEARCH == 1){
     
         
-            nearest_two_output_ptuse = nearest_power_of_two_calculator_ptuse(merged_filterbank_ptuse)
-            fft_size_value_ptuse = nearest_two_output_ptuse.map{ file -> file.text.trim() }
-            peasoup_output_ptuse = peasoup_ptuse(merged_filterbank_ptuse, params.dm_file, fft_size_value_ptuse, params.total_cands_limit, params.min_snr, params.acc_start, params.acc_end, params.ram_limit_gb, params.nh, params.ngpus, params.target_name, ptuse_utc, beam_name)
-            phase_predictor_output_ptuse = create_phase_predictor_ptuse(peasoup_output_ptuse, params.period_start, params.period_end, params.target_name, merged_filterbank_ptuse)
-            grouped_predictors_ptuse = phase_predictor_output_ptuse.groupTuple()
-            flattened_predictors_ptuse = grouped_predictors_ptuse.flatMap { input_file, predictors ->
-            predictors.collect { predictor -> tuple(input_file, predictor) }
-              }
+    //         nearest_two_output_ptuse = nearest_power_of_two_calculator_ptuse(merged_filterbank_ptuse)
+    //         fft_size_value_ptuse = nearest_two_output_ptuse.map{ file -> file.text.trim() }
+    //         peasoup_output_ptuse = peasoup_ptuse(merged_filterbank_ptuse, params.dm_file, fft_size_value_ptuse, params.total_cands_limit, params.min_snr, params.acc_start, params.acc_end, params.ram_limit_gb, params.nh, params.ngpus, params.target_name, ptuse_utc, beam_name)
+    //         phase_predictor_output_ptuse = create_phase_predictor_ptuse(peasoup_output_ptuse, params.period_start, params.period_end, params.target_name, merged_filterbank_ptuse)
+    //         grouped_predictors_ptuse = phase_predictor_output_ptuse.groupTuple()
+    //         flattened_predictors_ptuse = grouped_predictors_ptuse.flatMap { input_file, predictors ->
+    //         predictors.collect { predictor -> tuple(input_file, predictor) }
+    //           }
 
-            data_phase_predictor_pair_ptuse = flattened_predictors_ptuse.transpose()
+    //         data_phase_predictor_pair_ptuse = flattened_predictors_ptuse.transpose()
 
-            ptuse_folds_pred = ptuse_fold_phase_predictor(data_phase_predictor_pair_ptuse, params.dspsr_ptuse_threads, params.telescope, params.dspsr_ptuse_subint_length, params.dspsr_ptuse_bins, params.target_name)
+    //         ptuse_folds_pred = ptuse_fold_phase_predictor(data_phase_predictor_pair_ptuse, params.dspsr_ptuse_threads, params.telescope, params.dspsr_ptuse_subint_length, params.dspsr_ptuse_bins, params.target_name)
 
-            if (params.use_clfd == 1) {
-                clfd_output_ptuse_pred = clfd_ptuse_predictor(ptuse_folds_pred, params.target_name, params.qmask, params.qspike, params.clfd_processes)
-                pdmp_output = pdmp_ptuse_predictor(clfd_output_ptuse_pred, params.target_name, params.nchan, params.nsubint, params.nbins)
-            }
-            else {
-                pdmp_output = pdmp_ptuse_predictor(ptuse_folds_pred, params.target_name, params.nchan, params.nsubint, params.nbins)
-            }   
+    //         if (params.use_clfd == 1) {
+    //             clfd_output_ptuse_pred = clfd_ptuse_predictor(ptuse_folds_pred, params.target_name, params.qmask, params.qspike, params.clfd_processes)
+    //             pdmp_output = pdmp_ptuse_predictor(clfd_output_ptuse_pred, params.target_name, params.nchan, params.nsubint, params.nbins)
+    //         }
+    //         else {
+    //             pdmp_output = pdmp_ptuse_predictor(ptuse_folds_pred, params.target_name, params.nchan, params.nsubint, params.nbins)
+    //         }   
 
-        }
-        // PTUSE EPH FOLD CASE
-        if (params.PTUSE_EPH_FOLD == 1)
+    //     }
+    //     // PTUSE EPH FOLD CASE
+    //     if (params.PTUSE_EPH_FOLD == 1)
 
-        {
-            all_par_files_ptuse = Channel.fromPath("${params.ephemeris_files_dir}/*.par")
-            ptuse_folds_eph = ptuse_fold_ephemeris(params.target_name, ptuse_utc, merged_filterbank_ptuse, all_par_files_ptuse, params.dspsr_ptuse_threads, params.telescope, params.dspsr_ptuse_subint_length, params.dspsr_ptuse_bins)
-            if (params.use_clfd == 1) {
-                clfd_output_ptuse_eph = clfd_ptuse_eph(ptuse_folds_eph, params.target_name, params.qmask, params.qspike, params.clfd_processes)
-                pdmp_output = pdmp_ptuse_eph(clfd_output_ptuse_eph, params.target_name, params.nchan, params.nsubint, params.nbins)
-            }
-            else {
-                pdmp_output = pdmp_ptuse_eph(ptuse_folds_eph, params.target_name, params.nchan, params.nsubint, params.nbins)
-            }
+    //     {
+    //         all_par_files_ptuse = Channel.fromPath("${params.ephemeris_files_dir}/*.par")
+    //         // Combine par file and filterbank file channel using a cartesian product. Each par file will apply on all filterbank files.
+    //         combined_channel_ptuse_eph_fold = merged_filterbank_ptuse.combine(all_par_files_ptuse)  
+    //         ptuse_folds_eph = ptuse_fold_ephemeris(combined_channel_ptuse_eph_fold, params.target_name, ptuse_utc, params.dspsr_ptuse_threads, params.telescope, params.dspsr_ptuse_subint_length, params.dspsr_ptuse_bins)
+    //         if (params.use_clfd == 1) {
+    //             clfd_output_ptuse_eph = clfd_ptuse_eph(ptuse_folds_eph, params.target_name, params.qmask, params.qspike, params.clfd_processes)
+    //             pdmp_output = pdmp_ptuse_eph(clfd_output_ptuse_eph, params.target_name, params.nchan, params.nsubint, params.nbins)
+    //         }
+    //         else {
+    //             pdmp_output = pdmp_ptuse_eph(ptuse_folds_eph, params.target_name, params.nchan, params.nsubint, params.nbins)
+    //         }
 
 
-        }
+    //     }
     
 
 
 
-    }
+ //   }
 
-}
+//}
 

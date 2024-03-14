@@ -3,28 +3,30 @@ process filtool {
     container "${params.pulsarx_singularity_image}"
 
     input:
-    val(input_data) 
-    val(metadata)
+    val(filterbank_channel_with_metadata)
     val rfi_filter
     val threads
     val telescope
 
     output:
-    path("*.fil")
+    tuple val(filterbank_channel_with_metadata), path("*.fil")
+    
 
     script:
-    def outputFile = "${metadata[3].trim()}_${metadata[5].trim()}_${metadata[4].trim()}"
+    def outputFile = "${filterbank_channel_with_metadata[1].trim()}_${filterbank_channel_with_metadata[3].trim()}_${filterbank_channel_with_metadata[2].trim()}"
+    def inputFile = "${filterbank_channel_with_metadata[0].trim()}"
+    def source_name = "${filterbank_channel_with_metadata[1].trim()}"
     """
     # Get the first file from the input_data string
-    first_file=\$(echo ${input_data} | awk '{print \$1}')
+    first_file=\$(echo ${inputFile} | awk '{print \$1}')
 
     # Extract the file extension from the first file
     file_extension="\$(basename "\${first_file}" | sed 's/.*\\.//')"
     
     if [[ \${file_extension} == "sf" ]]; then
-        filtool -psrfits --scloffs -t ${threads} --telescope ${telescope} -z ${rfi_filter} -o ${outputFile} -f ${input_data} -s ${metadata[3]}
+        filtool -psrfits --scloffs -t ${threads} --telescope ${telescope} -z ${rfi_filter} -o ${outputFile} -f ${inputFile} -s ${source_name}
     else 
-        filtool -t ${threads} --telescope ${telescope} -z ${rfi_filter} -o ${outputFile} -f ${input_data} -s ${metadata[3]}
+        filtool -t ${threads} --telescope ${telescope} -z ${rfi_filter} -o ${outputFile} -f ${inputFile} -s ${source_name}
     fi
 
     """
@@ -35,15 +37,13 @@ process create_phase_predictor {
     container "${params.fold_singularity_image}"
 
     input:
-    path(xml_file)
+    tuple path(fil_file), val(target_name), val(beam_name), val(utc_start), val(fft_size), path(xml_file) 
+    //path(xml_file)
     val(period_start)
     val(period_end)
-    val(target_name)
-    val(input_file) //filterbank file used for grouping later.
 
     output:
-
-    tuple (val(input_file), path("predictor_candidate_*"), optional: true)
+    tuple (path(fil_file), val(target_name), val(beam_name), val(utc_start), val(fft_size), path(xml_file), path("predictor_candidate_*"), optional: true)
 
 
     script:
@@ -57,10 +57,10 @@ process nearest_power_of_two_calculator {
     container "${params.fold_singularity_image}"
 
     input:
-    path(fil_file)
+    tuple path(fil_file), val(target_name), val(beam_name), val(utc_start)
 
     output:
-    path "nearest_power_of_two.txt"
+    tuple path(fil_file), val(target_name), val(beam_name), val(utc_start), env(nearest_power_of_2)
 
     script:
     """
@@ -77,9 +77,10 @@ process nearest_power_of_two_calculator {
 
     nearest_power_of_2=\$((2**\$rounded_log2))
     echo \$nearest_power_of_2 > nearest_power_of_two.txt
+
+    
     """
 }
-
 process dspsr_fold_phase_predictor {
     label 'fold_phase_predictor' 
     container "${params.fold_singularity_image}"
@@ -114,16 +115,124 @@ process dspsr_fold_phase_predictor {
     """
 }
 
+process dspsr_fold_phase_predictor_serial {
+    label 'fold_phase_predictor' 
+    container "${params.fold_singularity_image}"
+
+    input:
+    tuple val(fil_file), val(target_name), val(beam_name), val(utc_start), val(fft_size), val(xml_file), val(phase_predictors)
+    val(threads)
+    val(telescope)
+    val(subint_length)
+    val(bins)
+
+    output:
+    path "*.ar"
+
+    script:
+    """
+    #!/bin/bash
+    set -ue
+
+    # Correctly preprocess phase_predictors to remove square brackets, spaces, and convert to a Bash array
+    predictors_cleaned=\$(echo "${phase_predictors}" | sed 's/\\[//g' | sed 's/\\]//g' | tr -d ' ' | tr ',' '\\n')
+
+    readarray -t phase_predictor_array <<< "\$predictors_cleaned"
+
+    # Function to run dspsr command
+    run_dspsr () {
+        local fil_file=\$1
+        local phase_predictor=\$2
+        local telescope=${telescope}
+        local threads=${threads}
+        local subint_length=${subint_length}
+        local bins=${bins}
+
+        output_filename=\$(basename \$fil_file .fil)
+        phase_predictor_basename=\$(basename \$phase_predictor)
+        candidate_id=\${phase_predictor_basename//predictor_candidate_/}
+        output_filename_with_candidate_id=\${output_filename}_candidate_id_\${candidate_id}
+
+        dspsr -k \$telescope -t\$threads -P \$phase_predictor -L \$subint_length -b\$bins -A -O \$output_filename_with_candidate_id \$fil_file
+    }
+
+    # Check if phase_predictors is a list or a single file
+    if [[ \${#phase_predictor_array[@]} -gt 1 ]]; then
+        # It's a list, iterate over each element
+        for phase_predictor in "\${phase_predictor_array[@]}"; do
+            run_dspsr ${fil_file} \$phase_predictor
+        done
+    else
+        # It's a single file
+        run_dspsr ${fil_file} "\${phase_predictor_array[0]}"
+    fi
+    """
+}
+
+
+
+
+
+// process dspsr_fold_phase_predictor_serial {
+//     label 'fold_phase_predictor' 
+//     container "${params.fold_singularity_image}"
+
+//     input:
+//     tuple val(fil_file), val(target_name), val(beam_name), val(utc_start), val(fft_size), val(xml_file), val(phase_predictors)
+//     val(threads)
+//     val(telescope)
+//     val(subint_length)
+//     val(bins)
+
+//     output:
+//     path "*.ar"
+
+//     script:
+//     phase_predictors.flatten().each { phase_predictor ->
+//         """
+//         echo ${phase_predictor}
+//         output_filename=\$(basename ${fil_file} .fil)
+//         phase_predictor_basename=\$(basename ${phase_predictor})
+//         candidate_id=\$(echo \${phase_predictor_basename} | sed 's/predictor_candidate_//')
+//         output_filename_with_candidate_id=\${output_filename}_candidate_id_\${candidate_id}
+//         dspsr -k ${telescope} -t${threads} -P ${phase_predictor} -L ${subint_length} -b${bins} -A -O \${output_filename_with_candidate_id} ${fil_file}
+//         """
+//     }
+// }
+
+process dspsr_fold_phase_predictor_parallel {
+    label 'fold_phase_predictor' 
+    container "${params.fold_singularity_image}"
+
+    input:
+    tuple val(fil_file), val(target_name), val(beam_name), val(utc_start), val(fft_size), val(xml_file), path(phase_predictor)
+    val(threads)
+    val(telescope)
+    val(subint_length)
+    val(bins)
+
+    output:
+    path "*.ar"
+
+    script:
+    """
+    output_filename=\$(basename ${fil_file} .fil)
+    phase_predictor_basename=\$(basename ${phase_predictor})
+    candidate_id=\$(echo \${phase_predictor_basename} | sed 's/predictor_candidate_//')
+    output_filename_with_candidate_id=\${output_filename}_candidate_id_\${candidate_id}
+    dspsr -k ${telescope} -t${threads} -P ${phase_predictor} -L ${subint_length} -b${bins} -A -O \${output_filename_with_candidate_id} ${fil_file}
+    """
+}
+
 
 process dspsr_fold_ephemeris {
     label 'fold_ephemeris' 
     container "${params.fold_singularity_image}"
 
     input:
+    tuple val(file_path), path(ephemeris_file)
     val(target_name) 
-    val(utc)
-    val(file_path)
-    path(ephemeris_file)
+    //val(utc)
     val(threads)
     val(telescope)
     val(subint_length)
@@ -145,7 +254,8 @@ process dspsr_fold_ephemeris {
     # Extracting basename and filename without extension from ephemeris_file
     ephemeris_basename=\$(basename ${ephemeris_file})
     ephemeris_name_no_ext=\${ephemeris_basename%.*}
-
+    
+    raw_data_basename=\$(basename ${file_path})
     # Construct the output file name with ephemeris file suffix
     output_filename="${target_name}_${utc}_\${ephemeris_name_no_ext}"
 
@@ -168,62 +278,96 @@ process clfd {
     container "${params.fold_singularity_image}"
 
     input:
-    path(fold_archive)
-    val(target_name)
-    val(qmask)
-    val(qspike)
-    val(processes)
+    path fold_archive
+    val target_name
+    val qmask
+    val qspike
+    val processes
 
     output:
     path "*.clfd"
 
     script:
     """
-    clfd --fmt psrchive ${fold_archive} --features std ptp lfamp --qmask ${qmask} --despike --qspike ${qspike} --processes ${processes} -o \${PWD}
+    #!/bin/bash
+    set -ue
+
+    # Convert fold_archive to an array, splitting by spaces
+    read -a fold_archives_array <<< "${fold_archive}"
+
+    # Check the number of elements in fold_archives_array
+    if [[ \${#fold_archives_array[@]} -gt 1 ]]; then
+        # Multiple archives, process each one separately
+        for archive in "\${fold_archives_array[@]}"; do
+            clfd --fmt psrchive \$archive --features std ptp lfamp --qmask ${qmask} --despike --qspike ${qspike} --processes ${processes} -o \${PWD}
+        done
+    else
+        # Single archive
+        clfd --fmt psrchive ${fold_archive} --features std ptp lfamp --qmask ${qmask} --despike --qspike ${qspike} --processes ${processes} -o \${PWD}
+    fi
     """
 }
+
 
 process pdmp {
     label 'pdmp' 
     container "${params.fold_singularity_image}"
 
     input:
-    path(fold_archive)
-    val(target_name)
-    val(nchan)
-    val(nsubint)
-    val(nbin)
+    path fold_archive
+    val target_name
+    val nchan
+    val nsubint
+    val nbin
 
     output:
     path "*.png"
 
     script:
     """
-    output_filename=\$(basename ${fold_archive} | sed 's/\\.[^.]*\$//')
-    pdmp -mc ${nchan} -ms ${nsubint} -mb ${nbin} -g \${output_filename}.png/PNG ${fold_archive}
-    """
+    #!/bin/bash
+    set -ue
 
+    # Convert fold_archive to an array, splitting by spaces
+    read -a fold_archives_array <<< "${fold_archive}"
+
+    # Check the number of elements in fold_archives_array
+    if [[ \${#fold_archives_array[@]} -gt 1 ]]; then
+        # Multiple archives, process each one separately
+        for archive in "\${fold_archives_array[@]}"; do
+            output_filename=\$(basename \$archive | sed 's/\\.[^.]*\$//')
+            pdmp -mc ${nchan} -ms ${nsubint} -mb ${nbin} -g \${output_filename}.png/PNG \$archive
+        done
+    else
+        # Single archive
+        output_filename=\$(basename ${fold_archive} | sed 's/\\.[^.]*\$//')
+        pdmp -mc ${nchan} -ms ${nsubint} -mb ${nbin} -g \${output_filename}.png/PNG ${fold_archive}
+    fi
+    """
 }
+
 
 process digifil {
     label 'digifil'
     container "${params.digifil_singularity_image}"
 
     input:
-    val(input_data)
-    val(metadata)
+    val(filterbank_channel_with_metadata)
     val(nbits)
     val(nthreads)
     val(time_decimate_factor)
 
     output:
-    path "*.fil"
+    tuple val(filterbank_channel_with_metadata), path("*.fil")
 
     script:
-    def outputFile = "${metadata[3].trim()}_${metadata[5].trim()}_${metadata[4].trim()}.fil"
+
+    def outputFile = "${filterbank_channel_with_metadata[1].trim()}_${filterbank_channel_with_metadata[3].trim()}_${filterbank_channel_with_metadata[2].trim()}.fil"
+    def inputFile = "${filterbank_channel_with_metadata[0].trim()}"
+
     """
-    # Get the first file from the input_data string
-    first_file=\$(echo ${input_data} | awk '{print \$1}')
+    # Get the first file from the inputFile string
+    first_file=\$(echo ${inputFile} | awk '{print \$1}')
 
     # Extract the file extension from the first file
     file_extension="\$(basename "\${first_file}" | sed 's/.*\\.//')"
@@ -236,9 +380,9 @@ process digifil {
 
     # Conditional execution of digifil based on time_decimate_factor
     if [ ${time_decimate_factor} -eq 1 ]; then
-        digifil \${scloffs_flag} -b ${nbits} -threads ${nthreads} -d 1 -o ${outputFile} \$(ls -v ${input_data})
+        digifil \${scloffs_flag} -b ${nbits} -threads ${nthreads} -d 1 -o ${outputFile} \$(ls -v ${inputFile})
     else
-        digifil \${scloffs_flag} -b ${nbits} -threads ${nthreads} -t ${time_decimate_factor} -d 1 -o ${outputFile} \$(ls -v ${input_data})
+        digifil \${scloffs_flag} -b ${nbits} -threads ${nthreads} -t ${time_decimate_factor} -d 1 -o ${outputFile} \$(ls -v ${inputFile})
     fi
     """
 }
