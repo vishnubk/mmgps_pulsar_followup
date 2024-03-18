@@ -32,13 +32,45 @@ process filtool {
     """
 }
 
+process filtool_ptuse {
+    label 'filtool'
+    container "${params.pulsarx_singularity_image}"
+
+    input:
+    tuple val(input_data), val(target_name), val(utc_start)
+    val rfi_filter
+    val threads
+    val telescope
+
+    output:
+    tuple val(target_name), val(utc_start), path("*.fil")
+    
+
+    script:
+    def outputFile = "${target_name}_${utc_start}"
+    """
+    # Get the first file from the input_data string
+    inputFiles=\$(ls -v ${input_data} | tr '\\n' ' ')
+    first_file=\$(echo \${inputFiles} | awk '{print \$1}')
+
+    # Extract the file extension from the first file
+    file_extension="\$(basename "\${first_file}" | sed 's/.*\\.//')"
+    
+    if [[ \${file_extension} == "sf" ]]; then
+        filtool --psrfits --scloffs -t ${threads} --telescope ${telescope} -z ${rfi_filter} -o ${outputFile} -f \${inputFiles} -s ${target_name}
+    else 
+        filtool -t ${threads} --telescope ${telescope} -z ${rfi_filter} -o ${outputFile} -f \${inputFiles} -s ${target_name}
+    fi
+
+    """
+}
+
 process create_phase_predictor {
     label 'create_phase_predictor' 
     container "${params.fold_singularity_image}"
 
     input:
     tuple path(fil_file), val(target_name), val(beam_name), val(utc_start), val(fft_size), path(xml_file) 
-    //path(xml_file)
     val(period_start)
     val(period_end)
 
@@ -253,13 +285,12 @@ process dspsr_fold_ephemeris {
     ephemeris_basename=\$(basename ${ephemeris_file})
     ephemeris_name_no_ext=\${ephemeris_basename%.*}
     
-    raw_data_basename=\$(basename ${file_path})
     # Construct the output file name with ephemeris file suffix
     output_filename="${target_name}_${utc_start}_\${ephemeris_name_no_ext}"
 
     # Check the file extension of the found file
     file_extension="\${found_file##*.}"
-    echo \${file_extension}
+    
 
     # Run the dspsr command
     if [[ \${file_extension} == "sf" ]]; then
@@ -271,9 +302,76 @@ process dspsr_fold_ephemeris {
 }
 
 
+process dspsr_fold_ephemeris_ptuse {
+    label 'fold_ephemeris'
+    container "${params.fold_singularity_image}"
+
+    input:
+    tuple val(file_path), val(target_name), val(beam_name), val(utc_start), path(ephemeris_file)
+    val(threads)
+    val(telescope)
+    val(subint_length)
+    val(bins)
+
+    output:
+    path "*.ar"
+
+    script:
+    """
+    # Find at least one file that matches the wildcard pattern
+    found_file=\$(ls -v ${file_path} 2> /dev/null | head -n 1)
+
+    if [[ -z "\$found_file" ]]; then
+        echo "Error: No matching files found."
+        exit 1
+    fi
+
+    # Extracting basename and filename without extension from ephemeris_file
+    ephemeris_basename=\$(basename ${ephemeris_file})
+    ephemeris_name_no_ext=\${ephemeris_basename%.*}
+
+    # Initialize an array to keep track of successfully processed files
+    declare -a successful_files
+
+    
+
+    # Loop through all files in the specified path
+    for input_file in \$(ls -v ${file_path}); do
+        # Extract the filename without its path and extension
+        filename=\$(basename "\$input_file")
+        filename_no_ext="\${filename%.*}"
+
+        
+        output_filename="\${filename_no_ext}.ar"
+
+        # Process each file with dspsr. If dspsr fails for a file, the script continues without exiting or throwing an error.
+        if dspsr -scloffs -A -E ${ephemeris_file} -L ${subint_length} -b ${bins} -t ${threads} -k ${telescope} -e ar -O "\${filename_no_ext}" "\$input_file" >& /dev/null; then
+            # If dspsr succeeds, add the path of the output .ar file to the list of successful files
+            successful_files+=("\$output_filename")
+        fi
+
+        
+    done
+
+    # Check if there are any successful files to process further
+    if [[ \${#successful_files[@]} -gt 0 ]]; then
+        # Construct the psradd command using the array of successfully processed files
+        psradd -o "${target_name}_${utc_start}_\${ephemeris_name_no_ext}.ar" \${successful_files[@]}
+        for file in "\${successful_files[@]}"; do
+            rm -rfv "\$file"
+        done
+    else
+        echo "No files were successfully processed by dspsr."
+    fi
+    """
+}
+
+
+
+
 process clfd {
     label 'clfd' 
-    container "${params.fold_singularity_image}"
+    container "${params.clfd_singularity_image}"
 
     input:
     path fold_archive
@@ -385,5 +483,43 @@ process digifil {
     """
 }
 
+process digifil_ptuse {
+    label 'digifil'
+    container "${params.digifil_singularity_image}"
 
+    input:
+    tuple val(input_data), val(target_name), val(utc_start)
+    val(nbits)
+    val(nthreads)
+    val(time_decimate_factor)
+
+    output:
+    tuple val(target_name), val(utc_start), path("*.fil")
+
+    script:
+
+    def outputFile = "${target_name}_${utc_start}"
+
+    """
+    # Get the first file from the inputFile string
+    inputFiles=\$(ls -v ${input_data} | tr '\\n' ' ')
+    first_file=\$(echo \${inputFiles} | awk '{print \$1}')
+
+    # Extract the file extension from the first file
+    file_extension="\$(basename "\${first_file}" | sed 's/.*\\.//')"
+
+    # Determine the -scloffs flag based on file extension
+    scloffs_flag=""
+    if [[ "\${file_extension}" == "sf" ]]; then
+        scloffs_flag="-scloffs"
+    fi
+
+    # Conditional execution of digifil based on time_decimate_factor
+    if [ ${time_decimate_factor} -eq 1 ]; then
+        digifil \${scloffs_flag} -b ${nbits} -threads ${nthreads} -d 1 -o ${outputFile} \${inputFiles}
+    else
+        digifil \${scloffs_flag} -b ${nbits} -threads ${nthreads} -t ${time_decimate_factor} -d 1 -o ${outputFile} \${inputFiles}
+    fi
+    """
+}
 

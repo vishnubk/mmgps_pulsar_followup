@@ -3,10 +3,10 @@ nextflow.enable.dsl=2
 //In nextflow dsl2 syntax, you cannot re-use the same process multiple times. Instead we make modules and call them separate names for APSUSE and PTUSE to solve the corner case where you search and fold both PTUSE & APSUSE observations.
 
 include { filtool as filtool_apsuse } from './modules'
-include { filtool as filtool_ptuse } from './modules'
+include { filtool_ptuse } from './modules'
 
 include { digifil as digifil_apsuse } from './modules'
-include { digifil as digifil_ptuse } from './modules'
+include { digifil_ptuse } from './modules'
 
 
 
@@ -24,7 +24,8 @@ include { dspsr_fold_phase_predictor_serial as apsuse_fold_phase_predictor_seria
 include { dspsr_fold_phase_predictor as ptuse_fold_phase_predictor } from './modules'
 
 include { dspsr_fold_ephemeris as apsuse_fold_ephemeris } from './modules'
-include { dspsr_fold_ephemeris as ptuse_fold_ephemeris } from './modules'
+//include { dspsr_fold_ephemeris as ptuse_fold_ephemeris } from './modules'
+include { dspsr_fold_ephemeris_ptuse as ptuse_fold_ephemeris } from './modules'
 
 include { clfd as clfd_apsuse_predictor } from './modules'
 include { clfd as clfd_apsuse_eph } from './modules'
@@ -121,7 +122,7 @@ process peasoup_ptuse {
 workflow {
 
     grouped_query_output = query_db(params.target_name, params.beam_name, params.utc_start, params.utc_end)
-    grouped_query_output.view()
+    
     // Selecting filterbank_files, target, beam_num, utc_start
     filterbank_channel_with_metadata = grouped_query_output.splitText()
                                   .toList()
@@ -219,97 +220,79 @@ workflow {
             }
 
         }
+    
+
+    if (params.PTUSE_SEARCH == 1 || params.PTUSE_EPH_FOLD == 1) {
+
+        filterbank_channel_with_metadata.branch { tuple ->
+        def year = tuple[3].split("-")[0] as int
+        before2023: year < 2023
+        after2023: year >= 2023
+        }.set { yearBranch }
+
+        // Before 2023 PTUSE data is kept in a different directory.
+        ptuse_data_before2023 = yearBranch.before2023.map { tuple ->
+        def parts = tuple[3].split(/-|:/)
+        def dateWithHour = parts[0..3].take(4).join("-")
+        def psrfits_file = "${params.PTUSE1}/${dateWithHour}*/${params.target_name}/**/*.sf"
+
+        return [psrfits_file, tuple[1].trim(), "ptuse", dateWithHour]
     }
+        // After 2023 case
+        yearBranch.after2023.map { tuple ->
+        def parts = tuple[3].split(/-|:/) // Splitting by both hyphens and colons
+        def dateWithHour = parts[0..3].take(4).join("-") // Now takes only the first 4 elements
+        def psrfits_file = "${params.PTUSE2}/${dateWithHour}*/${params.target_name}/**/*.sf"
 
-    // if (params.PTUSE_SEARCH == 1 || params.PTUSE_EPH_FOLD == 1) {
+        // Create a new tuple that includes the psrfits_file
+            return [psrfits_file, tuple[1].trim(), "ptuse", dateWithHour]
+        }.set { ptuse_data_after2023 }
 
-    //     processed_data_channel.branch { tuple ->
-    //     def year = tuple[5].split("-")[0] as int
-    //     before2023: year < 2023
-    //     after2023: year >= 2023
-    //     }.set { yearBranch }
-
-    //     // Before 2023 PTUSE data is kept in a different directory.
-    //     ptuse_data_before2023 = yearBranch.before2023.map { tuple ->
-    //     def parts = tuple[5].split(/-|:/)
-    //     def dateWithHour = parts[0..3].take(4).join("-")
-    //     def psrfits_file = "${params.PTUSE1}/${dateWithHour}*/${tuple[3]}/**/*.sf"
-
-    //     return [dateWithHour, psrfits_file]
-    // }
-    //     // After 2023 case
-    //     yearBranch.after2023.map { tuple ->
-    //     def parts = tuple[5].split(/-|:/) // Splitting by both hyphens and colons
-    //     def dateWithHour = parts[0..3].take(4).join("-") // Now takes only the first 4 elements
-    //     def psrfits_file = "${params.PTUSE2}/${dateWithHour}*/${tuple[3]}/**/*.sf"
-
-    //     // Create a new tuple that includes the psrfits_file
-    //         return [dateWithHour, psrfits_file]
-    //     }.set { ptuse_data_after2023 }
-
-    //     // Now combine both channels
-
-    //     all_ptuse_data = ptuse_data_before2023.mix(ptuse_data_after2023)
-    //     ptuse_utc = all_ptuse_data.map { tuple -> tuple[0].trim() }
-    //     ptuse_data = all_ptuse_data.map { tuple -> tuple[1].trim() }
-
-    //     if (params.use_filtool_ptuse == 1){
-    //         // Temporarily running filtool on PTUSE data is disabled until the bug is resolved. So we run digifil and no cleaning in both cases!
-    //         //merged_filterbank_ptuse = filtool_ptuse(ptuse_data, processed_data_channel, params.filtool_rfi_filter, params.filtool_threads, params.telescope)
-    //         merged_filterbank_ptuse = digifil_ptuse(ptuse_data, processed_data_channel, params.nbits, params.digifil_threads, params.digifil_decimate_time_ptuse)
-    //     }
-    //     else {
-    //         merged_filterbank_ptuse = digifil_ptuse(ptuse_data, processed_data_channel, params.nbits, params.digifil_threads, params.digifil_decimate_time_ptuse)
-
-    //     }
-    //     if (params.PTUSE_SEARCH == 1){
-    
+        // Now combine both channels
         
-    //         nearest_two_output_ptuse = nearest_power_of_two_calculator_ptuse(merged_filterbank_ptuse)
-    //         fft_size_value_ptuse = nearest_two_output_ptuse.map{ file -> file.text.trim() }
-    //         peasoup_output_ptuse = peasoup_ptuse(merged_filterbank_ptuse, params.dm_file, fft_size_value_ptuse, params.total_cands_limit, params.min_snr, params.acc_start, params.acc_end, params.ram_limit_gb, params.nh, params.ngpus, params.target_name, ptuse_utc, beam_name)
-    //         phase_predictor_output_ptuse = create_phase_predictor_ptuse(peasoup_output_ptuse, params.period_start, params.period_end, params.target_name, merged_filterbank_ptuse)
-    //         grouped_predictors_ptuse = phase_predictor_output_ptuse.groupTuple()
-    //         flattened_predictors_ptuse = grouped_predictors_ptuse.flatMap { input_file, predictors ->
-    //         predictors.collect { predictor -> tuple(input_file, predictor) }
-    //           }
+        all_ptuse_data = ptuse_data_before2023.mix(ptuse_data_after2023)
+        // PTUSE EPH FOLD CASE
+        if (params.PTUSE_EPH_FOLD == 1)
 
-    //         data_phase_predictor_pair_ptuse = flattened_predictors_ptuse.transpose()
-
-    //         ptuse_folds_pred = ptuse_fold_phase_predictor(data_phase_predictor_pair_ptuse, params.dspsr_ptuse_threads, params.telescope, params.dspsr_ptuse_subint_length, params.dspsr_ptuse_bins, params.target_name)
-
-    //         if (params.use_clfd == 1) {
-    //             clfd_output_ptuse_pred = clfd_ptuse_predictor(ptuse_folds_pred, params.target_name, params.qmask, params.qspike, params.clfd_processes)
-    //             pdmp_output = pdmp_ptuse_predictor(clfd_output_ptuse_pred, params.target_name, params.nchan, params.nsubint, params.nbins)
-    //         }
-    //         else {
-    //             pdmp_output = pdmp_ptuse_predictor(ptuse_folds_pred, params.target_name, params.nchan, params.nsubint, params.nbins)
-    //         }   
-
-    //     }
-    //     // PTUSE EPH FOLD CASE
-    //     if (params.PTUSE_EPH_FOLD == 1)
-
-    //     {
-    //         all_par_files_ptuse = Channel.fromPath("${params.ephemeris_files_dir}/*.par")
-    //         // Combine par file and filterbank file channel using a cartesian product. Each par file will apply on all filterbank files.
-    //         combined_channel_ptuse_eph_fold = merged_filterbank_ptuse.combine(all_par_files_ptuse)  
-    //         ptuse_folds_eph = ptuse_fold_ephemeris(combined_channel_ptuse_eph_fold, params.target_name, ptuse_utc, params.dspsr_ptuse_threads, params.telescope, params.dspsr_ptuse_subint_length, params.dspsr_ptuse_bins)
-    //         if (params.use_clfd == 1) {
-    //             clfd_output_ptuse_eph = clfd_ptuse_eph(ptuse_folds_eph, params.target_name, params.qmask, params.qspike, params.clfd_processes)
-    //             pdmp_output = pdmp_ptuse_eph(clfd_output_ptuse_eph, params.target_name, params.nchan, params.nsubint, params.nbins)
-    //         }
-    //         else {
-    //             pdmp_output = pdmp_ptuse_eph(ptuse_folds_eph, params.target_name, params.nchan, params.nsubint, params.nbins)
-    //         }
+        {
+            all_par_files_ptuse = Channel.fromPath("${params.ephemeris_files_dir}/*.par")
+            // Combine par file and filterbank file channel using a cartesian product. Each par file will apply on all filterbank files.
+            combined_channel_ptuse_eph_fold = all_ptuse_data.combine(all_par_files_ptuse) 
+            //combined_channel_ptuse_eph_fold.view() 
+            ptuse_folds_eph = ptuse_fold_ephemeris(combined_channel_ptuse_eph_fold, params.dspsr_ptuse_threads, params.telescope, params.dspsr_ptuse_subint_length, params.dspsr_ptuse_bins)
+            if (params.use_clfd == 1) {
+                clfd_output_ptuse_eph = clfd_ptuse_eph(ptuse_folds_eph, params.target_name, params.qmask, params.qspike, params.clfd_processes)
+                pdmp_output = pdmp_ptuse_eph(clfd_output_ptuse_eph, params.target_name, params.nchan, params.nsubint, params.nbins)
+            }
+            else {
+                pdmp_output = pdmp_ptuse_eph(ptuse_folds_eph, params.target_name, params.nchan, params.nsubint, params.nbins)
+            }
 
 
-    //     }
+        }
+        
+        
+
+//         if (params.use_filtool_ptuse == 1){
+//             // Temporarily running filtool on PTUSE data is disabled until the bug is resolved. So we run digifil and no cleaning in both cases!
+//             merged_filterbank_ptuse = filtool_ptuse(all_ptuse_data, params.filtool_rfi_filter, params.filtool_threads, params.telescope)
+//             //merged_filterbank_ptuse = digifil_ptuse(ptuse_data, processed_data_channel, params.nbits, params.digifil_threads, params.digifil_decimate_time_ptuse)
+//         }
+//         else {
+//             merged_filterbank_ptuse = digifil_ptuse(all_ptuse_data, params.nbits, params.digifil_threads, params.digifil_decimate_time_ptuse)
+
+//         }
+    
+//     }
+//     merged_filterbank_ptuse.view()
+
+
+ 
     
 
 
 
- //   }
+     }
 
-//}
+}
 
