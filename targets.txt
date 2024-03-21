@@ -1,0 +1,2 @@
+pointing_id,beam_id,filterbank_files,target,beam_num,utc_start
+0,0,/beegfs/PROCESSING/TRAPUM/iqrsubbanding_20200528/2024/3/14/5853683_gc_20240312_ngc2808_subbanding/2024-03-12-17:03:34_cfbf00000_p_id_5853683_iqrm_sub.fil,ngc2808,cfbf00000,2024-03-12 17:03:34

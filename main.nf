@@ -122,25 +122,20 @@ process peasoup_ptuse {
 workflow {
 
     grouped_query_output = Channel.fromPath("${params.filterbank_list}")
+    
     // Selecting filterbank_files, target, beam_num, utc_start
-    filterbank_channel_with_metadata = grouped_query_output.splitText()
-                                  .toList()
-                                  .flatMap { it.toList()[1..-1] } // Skip the first line (header)
-                                  .map { line ->
-                                      def parts = line.split('\t')
+    filterbank_channel_with_metadata = Channel
+    .fromPath("${params.filterbank_list}")
+    .splitCsv(header: true, sep:',') // Ensure the separator is specified if not comma
+    .map { row ->
+        // Now each row is a Groovy map with column names as keys
+        def filterbank_files = row.filterbank_files.trim() // Trim leading and trailing spaces
+        def target = row.target.trim()
+        def beam_num = row.beam_num.trim()
+        def utc_start = row.utc_start.trim().replace(" ", "-") // Replace space with underscore in utc_start
 
-                                    //   def pointing_id = parts[0]
-                                    //   def beam_id = parts[1]
-                                      def filterbank_files = parts[2]
-                                      def target = parts[3]
-                                      def beam_num = parts[4].replace(" ", "")
-                                      // Replace space with underscore in utc_start
-                                      def utc_start = parts[5].replace(" ", "-")
-
-
-                                      return tuple(filterbank_files, target, beam_num, utc_start)
-         
-                                  }
+        return tuple(filterbank_files, target, beam_num, utc_start)
+    }
 
     if (params.APSUSE_SEARCH == 1 || params.APSUSE_EPH_FOLD == 1) {
 
