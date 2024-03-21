@@ -121,8 +121,7 @@ process peasoup_ptuse {
 
 workflow {
 
-    grouped_query_output = query_db(params.target_name, params.beam_name, params.utc_start, params.utc_end)
-    
+    grouped_query_output = Channel.fromPath("${params.filterbank_list}")
     // Selecting filterbank_files, target, beam_num, utc_start
     filterbank_channel_with_metadata = grouped_query_output.splitText()
                                   .toList()
@@ -270,21 +269,27 @@ workflow {
 
 
         }
-        
-        
 
-//         if (params.use_filtool_ptuse == 1){
-//             // Temporarily running filtool on PTUSE data is disabled until the bug is resolved. So we run digifil and no cleaning in both cases!
-//             merged_filterbank_ptuse = filtool_ptuse(all_ptuse_data, params.filtool_rfi_filter, params.filtool_threads, params.telescope)
-//             //merged_filterbank_ptuse = digifil_ptuse(ptuse_data, processed_data_channel, params.nbits, params.digifil_threads, params.digifil_decimate_time_ptuse)
-//         }
-//         else {
-//             merged_filterbank_ptuse = digifil_ptuse(all_ptuse_data, params.nbits, params.digifil_threads, params.digifil_decimate_time_ptuse)
+        if (params.PTUSE_SEARCH == 1) {
 
-//         }
+        if (params.use_filtool_ptuse == 1){
+            merged_filterbank_ptuse = filtool_ptuse(all_ptuse_data, params.filtool_rfi_filter, params.filtool_threads, params.telescope)
+            //merged_filterbank_ptuse = digifil_ptuse(ptuse_data, processed_data_channel, params.nbits, params.digifil_threads, params.digifil_decimate_time_ptuse)
+        }
+        else {
+            merged_filterbank_ptuse = digifil_ptuse(all_ptuse_data, params.nbits, params.digifil_threads, params.digifil_decimate_time_ptuse)
+
+        }
     
-//     }
-//     merged_filterbank_ptuse.view()
+    }
+    merged_filterbank_ptuse.view()
+
+
+
+
+        }
+        
+        
 
 
  
@@ -292,7 +297,7 @@ workflow {
 
 
 
-     }
+     
 
 }
 
