@@ -60,23 +60,6 @@ process query_db {
 
 }
 
-process create_ptuse_paths {
-    label 'query_db'
-    container "${params.sql_query_image}"
-    input:
-    path(filename)
-
-    output:
-    path "ptuse_data_paths.txt"
-
-    script:
-    
-    """
-    python ${params.ptuse_path_creater} -f ${filename}
-    """
-
-}
-
 process peasoup_apsuse {
     label 'peasoup'
     container "${params.search_singularity_image}"
@@ -139,7 +122,7 @@ process peasoup_ptuse {
 workflow {
 
     grouped_query_output = query_db(params.target_name, params.beam_name, params.utc_start, params.utc_end)
-    
+    //grouped_query_output.view()
     // Selecting filterbank_files, target, beam_num, utc_start
     filterbank_channel_with_metadata = grouped_query_output.splitText()
                                   .toList()
@@ -158,6 +141,7 @@ workflow {
                                       return tuple(filterbank_files, target, beam_num, utc_start)
          
                                   }
+    //filterbank_channel_with_metadata.view()
 
     if (params.APSUSE_SEARCH == 1) {
 
@@ -173,6 +157,10 @@ workflow {
         //Add the filterbank file from filtool/digifil along with metadata to a single channel.
         updated_filterbank_channel = processed_filterbank.map { metadata, filepath ->
         def (raw_filterbank, target, beam_name, utc_start) = metadata
+        // Trim the string values
+        // target = target.trim()
+        // beam_name = beam_name.trim()
+        // utc_start = utc_start.trim()
         return tuple(filepath, target, beam_name, utc_start)
                                                               }
        
@@ -230,47 +218,58 @@ workflow {
 
          }
     
-    if (params.PTUSE_EPH_FOLD == 1) {
 
-        ptuse_path_creater = create_ptuse_paths(grouped_query_output)
-        ptuse_data = ptuse_path_creater.splitText()
-                                  .toList()
-                                  .flatMap { it.toList()[1..-1] } // Skip the first line (header)
-                                  .map { line ->
-                                      def parts = line.split('\t')
-                                      def psrfits_path1 = parts[0]
-                                      def psrfits_path2 = parts[1]
-                                      def psrfits_path3 = parts[2]
-                                      def target = parts[3].trim()
-                                      def beam_name = parts[4].trim()
-                                      def utc_start = parts[5].trim()
-                                      
-                                      return tuple(psrfits_path1, psrfits_path2, psrfits_path3, target, beam_name, utc_start)
-         
-                                  }
+    if (params.PTUSE_SEARCH == 1 || params.PTUSE_EPH_FOLD == 1) {
+
+        filterbank_channel_with_metadata.branch { tuple ->
+        def year = tuple[3].split("-")[0] as int
+        before2023: year < 2023
+        after2023: year >= 2023
+        }.set { yearBranch }
+
+        // Before 2023 PTUSE data is kept in a different directory.
+        ptuse_data_before2023 = yearBranch.before2023.map { tuple ->
+        def parts = tuple[3].split(/-|:/)
+        def dateWithHour = parts[0..3].take(4).join("-")
+        def psrfits_file = "${params.PTUSE1}/${dateWithHour}*/${params.target_name}/**/*.sf"
+
+        return [psrfits_file, tuple[1].trim(), "ptuse", dateWithHour]
+    }
+        // After 2023 case
+        yearBranch.after2023.map { tuple ->
+        def parts = tuple[3].split(/-|:/) // Splitting by both hyphens and colons
+        def dateWithHour = parts[0..3].take(4).join("-") // Now takes only the first 4 elements
+        def psrfits_file = "${params.PTUSE2}/${dateWithHour}*/${params.target_name}/**/*.sf"
+
+        // Create a new tuple that includes the psrfits_file
+            return [psrfits_file, tuple[1].trim(), "ptuse", dateWithHour]
+        }.set { ptuse_data_after2023 }
+
+        // Now combine both channels
         
+        all_ptuse_data = ptuse_data_before2023.mix(ptuse_data_after2023)
+        all_ptuse_data.view()
         // PTUSE EPH FOLD CASE
         if (params.PTUSE_EPH_FOLD == 1)
 
         {
             all_par_files_ptuse = Channel.fromPath("${params.ephemeris_files_dir}/*.par")
-            
             // Combine par file and filterbank file channel using a cartesian product. Each par file will apply on all filterbank files.
-            combined_channel_ptuse_eph_fold = ptuse_data.combine(all_par_files_ptuse)
-        
-            ptuse_folds_eph = (combined_channel_ptuse_eph_fold, params.dspsr_ptuse_threads, params.telescope, params.dspsr_ptuse_subint_length, params.dspsr_ptuse_bins)
-            if (params.use_clfd == 1) {
-                clfd_output_ptuse_eph = clfd_ptuse_eph(ptuse_folds_eph, params.target_name, params.qmask, params.qspike, params.clfd_processes)
-                pdmp_output = pdmp_ptuse_eph(clfd_output_ptuse_eph, params.target_name, params.nchan, params.nsubint, params.nbins)
-            }
-            else {
-                pdmp_output = pdmp_ptuse_eph(ptuse_folds_eph, params.target_name, params.nchan, params.nsubint, params.nbins)
-            }
+            combined_channel_ptuse_eph_fold = all_ptuse_data.combine(all_par_files_ptuse) 
+            combined_channel_ptuse_eph_fold.view()
+    //         ptuse_folds_eph = ptuse_fold_ephemeris(combined_channel_ptuse_eph_fold, params.dspsr_ptuse_threads, params.telescope, params.dspsr_ptuse_subint_length, params.dspsr_ptuse_bins)
+    //         if (params.use_clfd == 1) {
+    //             clfd_output_ptuse_eph = clfd_ptuse_eph(ptuse_folds_eph, params.target_name, params.qmask, params.qspike, params.clfd_processes)
+    //             pdmp_output = pdmp_ptuse_eph(clfd_output_ptuse_eph, params.target_name, params.nchan, params.nsubint, params.nbins)
+    //         }
+    //         else {
+    //             pdmp_output = pdmp_ptuse_eph(ptuse_folds_eph, params.target_name, params.nchan, params.nsubint, params.nbins)
+    //         }
 
 
-         }
+        }
         
-     }
+    }
 
 //         if (params.use_filtool_ptuse == 1){
 //             // Temporarily running filtool on PTUSE data is disabled until the bug is resolved. So we run digifil and no cleaning in both cases!
@@ -284,6 +283,13 @@ workflow {
     
 // //     }
 // //     merged_filterbank_ptuse.view()
+
+
+ 
+    
+
+
+
 //      }
 
 }
