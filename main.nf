@@ -23,9 +23,7 @@ include { dspsr_fold_phase_predictor_serial as apsuse_fold_phase_predictor_seria
 
 include { dspsr_fold_phase_predictor as ptuse_fold_phase_predictor } from './modules'
 include { dspsr_fold_ephemeris_apsuse as apsuse_fold_ephemeris } from './modules'
-//include { dspsr_fold_ephemeris as apsuse_fold_ephemeris } from './modules'
-//include { dspsr_fold_ephemeris as ptuse_fold_ephemeris } from './modules'
-include { dspsr_fold_ephemeris_ptuse as ptuse_fold_ephemeris } from './modules'
+include { dspsr_fold_ephemeris_ptuse_updated as ptuse_fold_ephemeris } from './modules'
 
 include { clfd as clfd_apsuse_predictor } from './modules'
 include { clfd as clfd_apsuse_eph } from './modules'
@@ -136,7 +134,29 @@ process peasoup_ptuse {
     """
 }
 
+process FIND_PTUSE_DATA {
+    // Inputs
+    input:
+    val target_name
+
+    // Outputs
+    output:
+    path "ptuse_data.csv"
+
+    script:
+    """
+    #!/bin/bash
+    echo "PTUSE_PATH,target,beam,utc" > ptuse_data.csv
+    find /beegfs/DATA/{MeerTIME,PTUSE}/SCI-20200703-MK-{01,02}/search -name "${target_name}" | while read line; do
+        ptuse_utc=\$(echo \$line | grep -oE '[0-9]{4}-[0-9]{2}-[0-9]{2}-[0-9]{2}:[0-9]{2}:[0-9]{2}')
+        echo "\${line}/**/*.sf,${target_name},ptuse,\${ptuse_utc}" >> ptuse_data.csv
+    done
+    """
+}
+
 workflow {
+
+    if (params.APSUSE_SEARCH == 1 || params.APSUSE_EPH_FOLD == 1 ) {
 
     grouped_query_output = query_db(params.target_name, params.beam_name, params.utc_start, params.utc_end)
     
@@ -158,7 +178,8 @@ workflow {
                                       return tuple(filterbank_files, target, beam_num, utc_start)
          
                                   }
-
+        
+    }
     if (params.APSUSE_SEARCH == 1) {
 
         if (params.use_filtool_apsuse == 1){
@@ -187,7 +208,8 @@ workflow {
                     phase_predictors.collect { phase_predictor ->
                         return [fil_file, target_name, beam_name, utc_start, fft_size, xml_file, phase_predictor]
                     }
-                } else {
+                } 
+                else {
                     // If it's a single element, return it as it is
                     return [[fil_file, target_name, beam_name, utc_start, fft_size, xml_file, phase_predictors]]
                 }
@@ -211,80 +233,55 @@ workflow {
 
     
     }
-      
-//         // User asked for APSUSE_EPH_FOLD.
-        if (params.APSUSE_EPH_FOLD == 1) {
-            all_par_files_apsuse = Channel.fromPath("${params.ephemeris_files_dir}/*.par")
-            // Combine par file and filterbank file channel using a cartesian product. Each par file will apply on all filterbank files.
-            combined_channel_apuse_eph_fold = filterbank_channel_with_metadata.combine(all_par_files_apsuse)  
+       // User asked for APSUSE_EPH_FOLD.
+    if (params.APSUSE_EPH_FOLD == 1) {
+        all_par_files_apsuse = Channel.fromPath("${params.ephemeris_files_dir}/*.par")
+        // Combine par file and filterbank file channel using a cartesian product. Each par file will apply on all filterbank files.
+        combined_channel_apuse_eph_fold = filterbank_channel_with_metadata.combine(all_par_files_apsuse)  
 
-            apsuse_folds = apsuse_fold_ephemeris(combined_channel_apuse_eph_fold, params.dspsr_apsuse_threads, params.telescope, params.dspsr_apsuse_subint_length, params.dspsr_apsuse_bins)
+        apsuse_folds = apsuse_fold_ephemeris(combined_channel_apuse_eph_fold, params.dspsr_apsuse_threads, params.telescope, params.dspsr_apsuse_subint_length, params.dspsr_apsuse_bins)
 
-            if (params.use_clfd == 1) {
-                clfd_output = clfd_apsuse_eph(apsuse_folds, params.target_name, params.qmask, params.qspike, params.clfd_processes)
-                pdmp_output = pdmp_apsuse_eph(clfd_output, params.target_name, params.nchan, params.nsubint, params.nbins)
-            }
-            else {
-                pdmp_output = pdmp_apsuse_eph(apsuse_folds, params.target_name, params.nchan, params.nsubint, params.nbins)
-            }
+        if (params.use_clfd == 1) {
+            clfd_output = clfd_apsuse_eph(apsuse_folds, params.target_name, params.qmask, params.qspike, params.clfd_processes)
+            pdmp_output = pdmp_apsuse_eph(clfd_output, params.target_name, params.nchan, params.nsubint, params.nbins)
+        }
+        else {
+            pdmp_output = pdmp_apsuse_eph(apsuse_folds, params.target_name, params.nchan, params.nsubint, params.nbins)
+        }
 
-         }
-    
+    }
+
     if (params.PTUSE_EPH_FOLD == 1) {
 
-        ptuse_path_creater = create_ptuse_paths(grouped_query_output)
+        ptuse_path_creater = FIND_PTUSE_DATA(params.target_name)
         ptuse_data = ptuse_path_creater.splitText()
                                   .toList()
                                   .flatMap { it.toList()[1..-1] } // Skip the first line (header)
                                   .map { line ->
-                                      def parts = line.split('\t')
-                                      def psrfits_path1 = parts[0]
-                                      def psrfits_path2 = parts[1]
-                                      def psrfits_path3 = parts[2]
-                                      def target = parts[3].trim()
-                                      def beam_name = parts[4].trim()
-                                      def utc_start = parts[5].trim()
+                                      def parts = line.split(',')
+                                      def input_data = parts[0]
+                                      def target = parts[1].trim()
+                                      def beam_name = parts[2].trim()
+                                      def ptuse_utc_start = parts[3].trim()
                                       
-                                      return tuple(psrfits_path1, psrfits_path2, psrfits_path3, target, beam_name, utc_start)
+                                      return tuple(input_data, target, beam_name, ptuse_utc_start)
          
                                   }
         
-        // PTUSE EPH FOLD CASE
-        if (params.PTUSE_EPH_FOLD == 1)
-
-        {
-            all_par_files_ptuse = Channel.fromPath("${params.ephemeris_files_dir}/*.par")
-            
-            // Combine par file and filterbank file channel using a cartesian product. Each par file will apply on all filterbank files.
-            combined_channel_ptuse_eph_fold = ptuse_data.combine(all_par_files_ptuse)
+        all_par_files_ptuse = Channel.fromPath("${params.ephemeris_files_dir}/*.par")
         
-            ptuse_folds_eph = (combined_channel_ptuse_eph_fold, params.dspsr_ptuse_threads, params.telescope, params.dspsr_ptuse_subint_length, params.dspsr_ptuse_bins)
-            if (params.use_clfd == 1) {
-                clfd_output_ptuse_eph = clfd_ptuse_eph(ptuse_folds_eph, params.target_name, params.qmask, params.qspike, params.clfd_processes)
-                pdmp_output = pdmp_ptuse_eph(clfd_output_ptuse_eph, params.target_name, params.nchan, params.nsubint, params.nbins)
-            }
-            else {
-                pdmp_output = pdmp_ptuse_eph(ptuse_folds_eph, params.target_name, params.nchan, params.nsubint, params.nbins)
-            }
+        // Combine par file and filterbank file channel using a cartesian product. Each par file will apply on all filterbank files.
+        combined_channel_ptuse_eph_fold = ptuse_data.combine(all_par_files_ptuse)
+        ptuse_folds_eph = ptuse_fold_ephemeris(combined_channel_ptuse_eph_fold, params.dspsr_ptuse_threads, params.telescope, params.dspsr_ptuse_subint_length, params.dspsr_ptuse_bins)
+        if (params.use_clfd == 1) {
+            clfd_output_ptuse_eph = clfd_ptuse_eph(ptuse_folds_eph, params.target_name, params.qmask, params.qspike, params.clfd_processes)
+            pdmp_output = pdmp_ptuse_eph(clfd_output_ptuse_eph, params.target_name, params.nchan, params.nsubint, params.nbins)
+        }
+        else {
+            pdmp_output = pdmp_ptuse_eph(ptuse_folds_eph, params.target_name, params.nchan, params.nsubint, params.nbins)
+        }
 
 
          }
         
-     }
-
-//         if (params.use_filtool_ptuse == 1){
-//             // Temporarily running filtool on PTUSE data is disabled until the bug is resolved. So we run digifil and no cleaning in both cases!
-//             merged_filterbank_ptuse = filtool_ptuse(all_ptuse_data, params.filtool_rfi_filter, params.filtool_threads, params.telescope)
-//             //merged_filterbank_ptuse = digifil_ptuse(ptuse_data, processed_data_channel, params.nbits, params.digifil_threads, params.digifil_decimate_time_ptuse)
-//         }
-//         else {
-//             merged_filterbank_ptuse = digifil_ptuse(all_ptuse_data, params.nbits, params.digifil_threads, params.digifil_decimate_time_ptuse)
-
-//         }
-    
-// //     }
-// //     merged_filterbank_ptuse.view()
-//      }
-
 }
-

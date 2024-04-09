@@ -338,36 +338,25 @@ process dspsr_fold_ephemeris_apsuse {
         if dspsr -A -E ${ephemeris_file} -L ${subint_length} -b ${bins} -t ${threads} -k ${telescope} -e ar -O "\${output_filename}" "\$input_file" >& /dev/null; then
             # If dspsr succeeds, add the path of the output .ar file to the list of successful files
             successful_files+=("\${output_filename}.ar")
-
         fi
     done
 
-    # Check if there are any successful files to process further
-    final_output_name="${target_name}_${utc_start}_\${ephemeris_name_no_ext}.ar"
-    if [[ \${#successful_files[@]} -eq 1 ]]; then
-        # If there is exactly one successful file, rename it to match the final output name
-        mv "\${successful_files[0]}" "\$final_output_name"
-
-    elif [[ \${#successful_files[@]} -gt 1 ]]; then
-        # If there are multiple successful files, use psradd to combine them into one archive with the final output name
-        psradd -o "\$final_output_name" *.ar
+    if [[ \${#successful_files[@]} -gt 0 ]]; then
+        final_output_name="${target_name}_${utc_start}_\${ephemeris_name_no_ext}.ar"         
+        psradd -o "\$final_output_name" \$(ls -v *.ar)
         # Cleanup the individual .ar files
-        
+
         for file in "\${successful_files[@]}"; do
-            #This check is for the edge case when user requested subint length is smaller than tobs, dspsr runs successfully, but no outputfile is created!
             if [ -e "\$file" ]; then
                 rm -rfv "\$file"
             fi
         done
+        
     else
         echo "No files were successfully processed by dspsr."
     fi
     """
 }
-
-
-
-
 
 process dspsr_fold_ephemeris_ptuse {
     label 'fold_ephemeris'
@@ -408,7 +397,6 @@ process dspsr_fold_ephemeris_ptuse {
     # Initialize an array to keep track of successfully processed files
     declare -a successful_files
 
-    
 
     # Loop through all files in the specified path
     for input_file in \$(ls -v \${file_path}); do
@@ -430,7 +418,76 @@ process dspsr_fold_ephemeris_ptuse {
     # Check if there are any successful files to process further
     if [[ \${#successful_files[@]} -gt 0 ]]; then
         # Construct the psradd command using the array of successfully processed files
-        psradd -o "${target_name}_${utc_start}_\${ephemeris_name_no_ext}.ar" *.ar
+        psradd -o "${target_name}_${utc_start}_\${ephemeris_name_no_ext}.ar" \$(ls -v *.ar)
+
+        for file in "\${successful_files[@]}"; do
+            #This check is for the edge case when user requested subint length is smaller than tobs, dspsr runs successfully, but no outputfile is created!
+            if [ -e "\$file" ]; then
+                rm -rfv "\$file"
+            fi
+        done
+    else
+        echo "No files were successfully processed by dspsr."
+    fi
+    """
+}
+
+process dspsr_fold_ephemeris_ptuse_updated {
+    label 'fold_ephemeris'
+    container "${params.fold_singularity_image}"
+
+    input:
+    tuple val(input_data), val(target_name), val(beam_name), val(utc_start), path(ephemeris_file)
+    val(threads)
+    val(telescope)
+    val(subint_length)
+    val(bins)
+
+    output:
+    path "*.ar"
+
+    script:
+    """
+    # Find at least one file that matches the wildcard pattern
+    found_file=\$(ls -v ${input_data} 2> /dev/null | head -n 1)
+    
+
+    if [[ -n "\$found_file" ]]; then
+        file_path=${input_data}
+    else
+        echo "No matching PTUSE observations found for ${target_name} at ${utc_start}. Exiting."
+        exit 0
+    fi
+
+    # Extracting basename and filename without extension from ephemeris_file
+    ephemeris_basename=\$(basename ${ephemeris_file})
+    ephemeris_name_no_ext=\${ephemeris_basename%.*}
+
+    # Initialize an array to keep track of successfully processed files
+    declare -a successful_files
+
+
+    # Loop through all files in the specified path
+    for input_file in \$(ls -v \${file_path}); do
+        # Extract the filename without its path and extension
+        filename=\$(basename "\$input_file")
+        filename_no_ext="\${filename%.*}"
+
+        output_filename="\${filename_no_ext}_\${ephemeris_name_no_ext}"
+
+        # Process each file with dspsr. If dspsr fails for a file, the script continues without exiting or throwing an error.
+        if dspsr -scloffs -A -E ${ephemeris_file} -L ${subint_length} -b ${bins} -t ${threads} -k ${telescope} -e ar -O "\${output_filename}" "\$input_file" >& /dev/null; then
+            # If dspsr succeeds, add the path of the output .ar file to the list of successful files
+            successful_files+=("\${output_filename}.ar")
+        fi
+
+        
+    done
+
+    # Check if there are any successful files to process further
+    if [[ \${#successful_files[@]} -gt 0 ]]; then
+        # Construct the psradd command using the array of successfully processed files
+        psradd -o "${target_name}_${utc_start}_\${ephemeris_name_no_ext}.ar" \$(ls -v *.ar)
 
         for file in "\${successful_files[@]}"; do
             #This check is for the edge case when user requested subint length is smaller than tobs, dspsr runs successfully, but no outputfile is created!
