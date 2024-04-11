@@ -1,0 +1,2 @@
+pointing_id,beam_id,filterbank_files,target,beam_num,utc_start
+0,0,/beegfs/DATA/TRAPUM/SCI-20200703-MK-01/20211021-0012/20211209_231725/cfbf00000/2021-12-09-23:17:32_cfbf00000_0000000000000000.fil,ngc2808,cfbf00000,2024-03-12 17:03:34
