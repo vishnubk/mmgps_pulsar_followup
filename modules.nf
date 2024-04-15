@@ -317,6 +317,8 @@ process dspsr_fold_ephemeris_apsuse {
 
     script:
     """
+    #!/bin/bash
+
     # Extracting basename and filename without extension from ephemeris_file
     ephemeris_basename=\$(basename ${ephemeris_file})
     ephemeris_name_no_ext=\${ephemeris_basename%.*}
@@ -342,7 +344,7 @@ process dspsr_fold_ephemeris_apsuse {
     done
 
     if [[ \${#successful_files[@]} -gt 0 ]]; then
-        final_output_name="${target_name}_${utc_start}_\${ephemeris_name_no_ext}.ar"         
+        final_output_name="${target_name}_${utc_start}_${beam_name}_\${ephemeris_name_no_ext}.ar"         
         psradd -o "\$final_output_name" \$(ls -v *.ar)
         # Cleanup the individual .ar files
 
@@ -354,6 +356,7 @@ process dspsr_fold_ephemeris_apsuse {
         
     else
         echo "No files were successfully processed by dspsr."
+        exit 2
     fi
     """
 }
@@ -448,6 +451,8 @@ process dspsr_fold_ephemeris_ptuse_updated {
 
     script:
     """
+    #!/bin/bash
+
     # Find at least one file that matches the wildcard pattern
     found_file=\$(ls -v ${input_data} 2> /dev/null | head -n 1)
     
@@ -456,7 +461,7 @@ process dspsr_fold_ephemeris_ptuse_updated {
         file_path=${input_data}
     else
         echo "No matching PTUSE observations found for ${target_name} at ${utc_start}. Exiting."
-        exit 0
+        exit 2
     fi
 
     # Extracting basename and filename without extension from ephemeris_file
@@ -497,6 +502,7 @@ process dspsr_fold_ephemeris_ptuse_updated {
         done
     else
         echo "No files were successfully processed by dspsr."
+        exit 2
     fi
     """
 }
@@ -521,8 +527,7 @@ process clfd {
     script:
     """
     #!/bin/bash
-    set -ue
-
+    
     # Convert fold_archive to an array, splitting by spaces
     read -a fold_archives_array <<< "${fold_archive}"
 
