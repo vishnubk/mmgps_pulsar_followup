@@ -355,7 +355,7 @@ process dspsr_fold_ephemeris_apsuse {
         done
         
     else
-        echo "No files were successfully processed by dspsr."
+        echo "All the data files are corrupted. No output file will be created, expect downstream processes (clfd/pdmp) to fail."
         exit 2
     fi
     """
@@ -501,7 +501,7 @@ process dspsr_fold_ephemeris_ptuse_updated {
             fi
         done
     else
-        echo "No files were successfully processed by dspsr."
+        echo "All the data files are corrupted. No output file will be created, expect downstream processes (clfd/pdmp) to fail."
         exit 2
     fi
     """
