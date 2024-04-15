@@ -223,7 +223,7 @@ workflow {
             apsuse_folds = apsuse_fold_phase_predictor_serial(phase_predictor_output, params.dspsr_apsuse_threads, params.telescope, params.dspsr_apsuse_subint_length, params.dspsr_apsuse_bins)
         }
 
-        if (params.use_clfd == 1) {
+        if (params.use_clfd_apsuse == 1) {
             clfd_output = clfd_apsuse_predictor(apsuse_folds, params.target_name, params.qmask, params.qspike, params.clfd_processes)
             pdmp_output = pdmp_apsuse_predictor(clfd_output, params.target_name, params.nchan, params.nsubint, params.nbins)
         }
@@ -241,7 +241,7 @@ workflow {
 
         apsuse_folds = apsuse_fold_ephemeris(combined_channel_apuse_eph_fold, params.dspsr_apsuse_threads, params.telescope, params.dspsr_apsuse_subint_length, params.dspsr_apsuse_bins)
 
-        if (params.use_clfd == 1) {
+        if (params.use_clfd_apsuse == 1) {
             clfd_output = clfd_apsuse_eph(apsuse_folds, params.target_name, params.qmask, params.qspike, params.clfd_processes)
             pdmp_output = pdmp_apsuse_eph(clfd_output, params.target_name, params.nchan, params.nsubint, params.nbins)
         }
@@ -273,7 +273,7 @@ workflow {
         // Combine par file and filterbank file channel using a cartesian product. Each par file will apply on all filterbank files.
         combined_channel_ptuse_eph_fold = ptuse_data.combine(all_par_files_ptuse)
         ptuse_folds_eph = ptuse_fold_ephemeris(combined_channel_ptuse_eph_fold, params.dspsr_ptuse_threads, params.telescope, params.dspsr_ptuse_subint_length, params.dspsr_ptuse_bins)
-        if (params.use_clfd == 1) {
+        if (params.use_clfd_ptuse == 1) {
             clfd_output_ptuse_eph = clfd_ptuse_eph(ptuse_folds_eph, params.target_name, params.qmask, params.qspike, params.clfd_processes)
             pdmp_output = pdmp_ptuse_eph(clfd_output_ptuse_eph, params.target_name, params.nchan, params.nsubint, params.nbins)
         }
