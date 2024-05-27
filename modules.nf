@@ -508,7 +508,28 @@ process dspsr_fold_ephemeris_ptuse_updated {
 }
 
 
+process pam {
+    label 'pam'
+    container "${params.fold_singularity_image}"
 
+    input:
+    path fold_archive
+    val output_nchans
+
+    output:
+    path "*.pF*"
+
+    script:
+    """
+    #!/bin/bash
+
+    pam -p --setnchn=${output_nchans} -e pF${output_nchans} ${fold_archive}
+
+    """
+    
+
+
+}
 
 process clfd {
     label 'clfd' 
