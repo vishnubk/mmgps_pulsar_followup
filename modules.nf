@@ -124,6 +124,8 @@ process dspsr_fold_phase_predictor {
     val(subint_length)
     val(bins)
     val(target_name)
+    val(ram_upper_limit)
+
 
     output:
     path "*.ar"
@@ -143,7 +145,7 @@ process dspsr_fold_phase_predictor {
     output_filename_with_candidate_id=\${output_filename}_candidate_id_\${candidate_id}
 
     # Run dspsr with the modified output filename
-    dspsr -k ${telescope} -t${threads} -P ${phase_predictor} -L ${subint_length} -b${bins} -A -O \${output_filename_with_candidate_id} ${fil_file}
+    dspsr -k ${telescope} -t${threads} -P ${phase_predictor} -L ${subint_length} -b${bins} -U ${ram_upper_limit} -A -O \${output_filename_with_candidate_id} ${fil_file}
     """
 }
 
@@ -157,6 +159,7 @@ process dspsr_fold_phase_predictor_serial {
     val(telescope)
     val(subint_length)
     val(bins)
+    val(ram_upper_limit)
 
     output:
     path "*.ar"
@@ -179,13 +182,14 @@ process dspsr_fold_phase_predictor_serial {
         local threads=${threads}
         local subint_length=${subint_length}
         local bins=${bins}
+        local ram_upper_limit=${ram_upper_limit}
 
         output_filename=\$(basename \$fil_file .fil)
         phase_predictor_basename=\$(basename \$phase_predictor)
         candidate_id=\${phase_predictor_basename//predictor_candidate_/}
         output_filename_with_candidate_id=\${output_filename}_candidate_id_\${candidate_id}
 
-        dspsr -k \$telescope -t\$threads -P \$phase_predictor -L \$subint_length -b\$bins -A -O \$output_filename_with_candidate_id \$fil_file
+        dspsr -k \$telescope -t\$threads -P \$phase_predictor -L \$subint_length -b\$bins -U \${ram_upper_limit} -A -O \$output_filename_with_candidate_id \$fil_file
     }
 
     # Check if phase_predictors is a list or a single file
@@ -242,6 +246,7 @@ process dspsr_fold_phase_predictor_parallel {
     val(telescope)
     val(subint_length)
     val(bins)
+    val(ram_upper_limit)
 
     output:
     path "*.ar"
@@ -252,7 +257,7 @@ process dspsr_fold_phase_predictor_parallel {
     phase_predictor_basename=\$(basename ${phase_predictor})
     candidate_id=\$(echo \${phase_predictor_basename} | sed 's/predictor_candidate_//')
     output_filename_with_candidate_id=\${output_filename}_candidate_id_\${candidate_id}
-    dspsr -k ${telescope} -t${threads} -P ${phase_predictor} -L ${subint_length} -b${bins} -A -O \${output_filename_with_candidate_id} ${fil_file}
+    dspsr -k ${telescope} -t${threads} -P ${phase_predictor} -L ${subint_length} -b${bins} -U ${ram_upper_limit} -A -O \${output_filename_with_candidate_id} ${fil_file}
     """
 }
 
@@ -267,6 +272,7 @@ process dspsr_fold_ephemeris {
     val(telescope)
     val(subint_length)
     val(bins)
+    val(ram_upper_limit)
 
     output:
     path "*.ar"
@@ -294,9 +300,9 @@ process dspsr_fold_ephemeris {
 
     # Run the dspsr command
     if [[ \${file_extension} == "sf" ]]; then
-        dspsr -scloffs -k ${telescope} -t${threads} -E ${ephemeris_file} -L ${subint_length} -b${bins} -A -O \${output_filename} \$(ls -v ${file_path})
+        dspsr -scloffs -k ${telescope} -t${threads} -E ${ephemeris_file} -L ${subint_length} -b${bins} -U ${ram_upper_limit} -A -O \${output_filename} \$(ls -v ${file_path})
     else
-        dspsr -k ${telescope} -t${threads} -E ${ephemeris_file} -L ${subint_length} -b${bins} -A -O \${output_filename} \$(ls -v ${file_path})
+        dspsr -k ${telescope} -t${threads} -E ${ephemeris_file} -L ${subint_length} -b${bins} -U ${ram_upper_limit} -A -O \${output_filename} \$(ls -v ${file_path})
     fi
     """
 }
@@ -311,6 +317,7 @@ process dspsr_fold_ephemeris_apsuse {
     val(telescope)
     val(subint_length)
     val(bins)
+    val(ram_upper_limit)
 
     output:
     path "*.ar"
@@ -337,7 +344,7 @@ process dspsr_fold_ephemeris_apsuse {
         output_filename="\${filename_no_ext}_\${ephemeris_name_no_ext}"
 
         # Process each file with dspsr. If dspsr fails for a file, the script continues without exiting or throwing an error.
-        if dspsr -A -E ${ephemeris_file} -L ${subint_length} -b ${bins} -t ${threads} -k ${telescope} -e ar -O "\${output_filename}" "\$input_file" >& /dev/null; then
+        if dspsr -A -E ${ephemeris_file} -L ${subint_length} -b ${bins} -t ${threads} -k ${telescope} -U ${ram_upper_limit} -e ar -O "\${output_filename}" "\$input_file" >& /dev/null; then
             # If dspsr succeeds, add the path of the output .ar file to the list of successful files
             successful_files+=("\${output_filename}.ar")
         fi
@@ -371,6 +378,7 @@ process dspsr_fold_ephemeris_ptuse {
     val(telescope)
     val(subint_length)
     val(bins)
+    val(ram_upper_limit)
 
     output:
     path "*.ar"
@@ -410,7 +418,7 @@ process dspsr_fold_ephemeris_ptuse {
         output_filename="\${filename_no_ext}_\${ephemeris_name_no_ext}"
 
         # Process each file with dspsr. If dspsr fails for a file, the script continues without exiting or throwing an error.
-        if dspsr -scloffs -A -E ${ephemeris_file} -L ${subint_length} -b ${bins} -t ${threads} -k ${telescope} -e ar -O "\${output_filename}" "\$input_file" >& /dev/null; then
+        if dspsr -scloffs -A -E ${ephemeris_file} -L ${subint_length} -b ${bins} -t ${threads} -k ${telescope} -U ${ram_upper_limit} -e ar -O "\${output_filename}" "\$input_file" >& /dev/null; then
             # If dspsr succeeds, add the path of the output .ar file to the list of successful files
             successful_files+=("\${output_filename}.ar")
         fi
@@ -445,6 +453,7 @@ process dspsr_fold_ephemeris_ptuse_updated {
     val(telescope)
     val(subint_length)
     val(bins)
+    val(ram_upper_limit)
 
     output:
     path "*.ar"
@@ -481,7 +490,7 @@ process dspsr_fold_ephemeris_ptuse_updated {
         output_filename="\${filename_no_ext}_\${ephemeris_name_no_ext}"
 
         # Process each file with dspsr. If dspsr fails for a file, the script continues without exiting or throwing an error.
-        if dspsr -scloffs -A -E ${ephemeris_file} -L ${subint_length} -b ${bins} -t ${threads} -k ${telescope} -e ar -O "\${output_filename}" "\$input_file" >& /dev/null; then
+        if dspsr -scloffs -A -E ${ephemeris_file} -L ${subint_length} -b ${bins} -t ${threads} -k ${telescope} -U ${ram_upper_limit} -e ar -O "\${output_filename}" "\$input_file" >& /dev/null; then
             # If dspsr succeeds, add the path of the output .ar file to the list of successful files
             successful_files+=("\${output_filename}.ar")
         fi
@@ -515,21 +524,25 @@ process pam {
     input:
     path fold_archive
     val output_nchans
+    val output_subints
 
     output:
-    path "*.pF*"
+    path "*.p*"
 
     script:
     """
     #!/bin/bash
 
-    pam -p --setnchn=${output_nchans} -e pF${output_nchans} ${fold_archive}
-
+    if [ ${output_nchans} -gt 0 ] && [ ${output_subints} -gt 0 ]; then
+        pam -p --setnchn=${output_nchans} --settsub=${output_subints} -e pF${output_nchans}T${output_subints} ${fold_archive}
+    elif [ ${output_nchans} -gt 0 ]; then
+        pam -p --setnchn=${output_nchans} -e pF${output_nchans} ${fold_archive}
+    elif [ ${output_subints} -gt 0 ]; then
+        pam -p --settsub=${output_subints} -e pT${output_subints} ${fold_archive}
+    fi
     """
-    
-
-
 }
+
 
 process clfd {
     label 'clfd' 

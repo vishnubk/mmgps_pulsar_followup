@@ -1,8 +1,9 @@
 .env
 work/
+*.html
 .nextflow*
 SEARCH/
 TIMING/
-*par
+*.par
 .m*
 parfiles/

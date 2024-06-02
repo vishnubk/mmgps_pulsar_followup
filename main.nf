@@ -17,7 +17,6 @@ include { nearest_power_of_two_calculator as nearest_power_of_two_calculator_aps
 include { nearest_power_of_two_calculator as nearest_power_of_two_calculator_ptuse } from './modules'
 
 
-//include { dspsr_fold_phase_predictor as apsuse_fold_phase_predictor } from './modules'
 include { dspsr_fold_phase_predictor_parallel as apsuse_fold_phase_predictor_parallel } from './modules'
 include { dspsr_fold_phase_predictor_serial as apsuse_fold_phase_predictor_serial } from './modules'
 
@@ -140,6 +139,7 @@ process FIND_PTUSE_DATA {
     // Inputs
     input:
     val target_name
+    val PTUSE_DIRECTORY_STRUCTURE
 
     // Outputs
     output:
@@ -149,12 +149,15 @@ process FIND_PTUSE_DATA {
     """
     #!/bin/bash
     echo "PTUSE_PATH,target,beam,utc" > ptuse_data.csv
-    find /beegfs/DATA/{MeerTIME,PTUSE}/SCI-20200703-MK-{01,02}/search -name "${target_name}" | while read line; do
-        ptuse_utc=\$(echo \$line | grep -oE '[0-9]{4}-[0-9]{2}-[0-9]{2}-[0-9]{2}:[0-9]{2}:[0-9]{2}')
-        echo "\${line}/**/*.sf,${target_name},ptuse,\${ptuse_utc}" >> ptuse_data.csv
+    find ${PTUSE_DIRECTORY_STRUCTURE} -name "${target_name}" 2>/dev/null | while read line; do
+        if [[ -d "\$line" ]]; then
+            ptuse_utc=\$(echo \$line | grep -oE '[0-9]{4}-[0-9]{2}-[0-9]{2}-[0-9]{2}:[0-9]{2}:[0-9]{2}')
+            echo "\${line}/**/*.sf,${target_name},ptuse,\${ptuse_utc}" >> ptuse_data.csv
+        fi
     done
     """
 }
+
 
 workflow {
 
@@ -218,12 +221,12 @@ workflow {
                 }
             }
             
-            apsuse_folds = apsuse_fold_phase_predictor_parallel(restructured_phase_predictor_output, params.dspsr_apsuse_threads, params.telescope, params.dspsr_apsuse_subint_length, params.dspsr_apsuse_bins)
+            apsuse_folds = apsuse_fold_phase_predictor_parallel(restructured_phase_predictor_output, params.dspsr_apsuse_threads, params.telescope, params.dspsr_apsuse_subint_length, params.dspsr_apsuse_bins, params.dspsr_apsuse_ram_upper_limit_mb)
         }
         //Folding candidates in serial. Use this when you have only a few spin period cands.
         else{
 
-            apsuse_folds = apsuse_fold_phase_predictor_serial(phase_predictor_output, params.dspsr_apsuse_threads, params.telescope, params.dspsr_apsuse_subint_length, params.dspsr_apsuse_bins)
+            apsuse_folds = apsuse_fold_phase_predictor_serial(phase_predictor_output, params.dspsr_apsuse_threads, params.telescope, params.dspsr_apsuse_subint_length, params.dspsr_apsuse_bins, params.dspsr_apsuse_ram_upper_limit_mb)
         }
 
         if (params.use_clfd_apsuse == 1) {
@@ -241,11 +244,11 @@ workflow {
         all_par_files_apsuse = Channel.fromPath("${params.ephemeris_files_dir}/*.par")
         // Combine par file and filterbank file channel using a cartesian product. Each par file will apply on all filterbank files.
         combined_channel_apuse_eph_fold = filterbank_channel_with_metadata.combine(all_par_files_apsuse)  
-        apsuse_folds = apsuse_fold_ephemeris(combined_channel_apuse_eph_fold, params.dspsr_apsuse_threads, params.telescope, params.dspsr_apsuse_subint_length, params.dspsr_apsuse_bins)
+        apsuse_folds = apsuse_fold_ephemeris(combined_channel_apuse_eph_fold, params.dspsr_apsuse_threads, params.telescope, params.dspsr_apsuse_subint_length, params.dspsr_apsuse_bins, params.dspsr_apsuse_ram_upper_limit_mb)
 
-        if (params.apsuse_output_archives_nchans > 0){
+        if (params.apsuse_output_archives_nchans > 0 || params.apsuse_output_archives_nsubints > 0) {
 
-            apsuse_scrunched_folds_eph = pam_apsuse(apsuse_folds, params.apsuse_output_archives_nchans)
+            apsuse_scrunched_folds_eph = pam_apsuse(apsuse_folds, params.apsuse_output_archives_nchans, params.apsuse_output_archives_nsubints)
 
         }
         else {
@@ -264,7 +267,8 @@ workflow {
 
     if (params.PTUSE_EPH_FOLD == 1) {
 
-        ptuse_path_creater = FIND_PTUSE_DATA(params.target_name)
+
+        ptuse_path_creater = FIND_PTUSE_DATA(params.target_name, params.ptuse_directory_structure)
         ptuse_data = ptuse_path_creater.splitText()
                                   .toList()
                                   .flatMap { it.toList()[1..-1] } // Skip the first line (header)
@@ -283,10 +287,10 @@ workflow {
         
         // Combine par file and filterbank file channel using a cartesian product. Each par file will apply on all filterbank files.
         combined_channel_ptuse_eph_fold = ptuse_data.combine(all_par_files_ptuse)
-        ptuse_folds_eph = ptuse_fold_ephemeris(combined_channel_ptuse_eph_fold, params.dspsr_ptuse_threads, params.telescope, params.dspsr_ptuse_subint_length, params.dspsr_ptuse_bins)
-        if (params.ptuse_output_archives_nchans > 0){
+        ptuse_folds_eph = ptuse_fold_ephemeris(combined_channel_ptuse_eph_fold, params.dspsr_ptuse_threads, params.telescope, params.dspsr_ptuse_subint_length, params.dspsr_ptuse_bins, params.dspsr_ptuse_ram_upper_limit_mb)
+        if (params.ptuse_output_archives_nchans > 0 || params.ptuse_output_archives_nsubints > 0) {
 
-            ptuse_scrunched_folds_eph = pam_ptuse(ptuse_folds_eph, params.ptuse_output_archives_nchans)
+            ptuse_scrunched_folds_eph = pam_ptuse(ptuse_folds_eph, params.ptuse_output_archives_nchans, params.ptuse_output_archives_nsubints)
 
         }
         else {
@@ -302,6 +306,6 @@ workflow {
         }
 
 
-         }
+          }
         
 }
